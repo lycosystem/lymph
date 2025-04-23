@@ -1,11 +1,5 @@
-.. image:: ./_static/github-social-card.png
-    :width: 800 px
-
-.. include:: badges.rst
-
-----
-
-.. include:: explanation.rst
+.. include:: ../../README.rst
+    :end-before: .. SEPARATOR
 
 ----
 
@@ -15,20 +9,13 @@ Documentation
 
 .. toctree::
     :maxdepth: 3
-    :caption: Content
 
     install
     quickstart
     api
     license
 
-
-Index & search
---------------
-
-*  :ref:`genindex`
-*  :ref:`search`
-
 ----
 
-.. include:: refs.rst
+.. include:: ../../README.rst
+    :start-after: .. SEPARATOR

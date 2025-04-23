@@ -10,10 +10,3 @@ Detailed API
     components
     types
     utils
-
-
-Index & search
---------------
-
-*  :ref:`genindex`
-*  :ref:`search`
