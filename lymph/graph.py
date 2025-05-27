@@ -433,7 +433,7 @@ class Edge:
         0.4
         """
         first, args = popfirst(args)
-        value = first or self.get_spread_prob()
+        value = first if first is not None else self.get_spread_prob()
 
         if self.is_growth:
             self.set_spread_prob(kwargs.get("growth", value))
@@ -446,7 +446,7 @@ class Edge:
             and not self.is_growth
         ):
             first, args = popfirst(args)
-            value = first or self.get_micro_mod()
+            value = first if first is not None else self.get_micro_mod()
             self.set_micro_mod(kwargs.get("micro", value))
 
         return args
