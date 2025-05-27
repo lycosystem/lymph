@@ -7,14 +7,6 @@ Detailed API
 
     graph
     models
-    mixins
     components
     types
     utils
-
-
-Index & search
---------------
-
-*  :ref:`genindex`
-*  :ref:`search`

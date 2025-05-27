@@ -221,7 +221,7 @@ class Edge:
         self,
         parent: Tumor | LymphNodeLevel,
         child: LymphNodeLevel,
-        spread_prob: float = 0.0,
+        spread_prob: float = 0.5,
         micro_mod: float = 1.0,
     ) -> None:
         """Create a new edge between two nodes.
@@ -362,7 +362,7 @@ class Edge:
     def get_spread_prob(self) -> float:
         """Return the spread probability."""
         if not hasattr(self, "_spread_prob"):
-            self._spread_prob = 0.0
+            self._spread_prob = 0.5
         return self._spread_prob
 
     def set_spread_prob(self, new_spread_prob: float | None) -> None:
@@ -433,7 +433,7 @@ class Edge:
         0.4
         """
         first, args = popfirst(args)
-        value = first or self.get_spread_prob()
+        value = first if first is not None else self.get_spread_prob()
 
         if self.is_growth:
             self.set_spread_prob(kwargs.get("growth", value))
@@ -446,7 +446,7 @@ class Edge:
             and not self.is_growth
         ):
             first, args = popfirst(args)
-            value = first or self.get_micro_mod()
+            value = first if first is not None else self.get_micro_mod()
             self.set_micro_mod(kwargs.get("micro", value))
 
         return args

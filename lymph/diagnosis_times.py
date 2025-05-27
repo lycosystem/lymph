@@ -247,7 +247,10 @@ class Distribution:
 
         for name, value in self._func.keywords.items():
             first, args = popfirst(args)
-            self._func.keywords[name] = first or kwargs.get(name, value)
+            if first is not None:
+                self._func.keywords[name] = first
+            else:
+                self._func.keywords[name] = kwargs.get(name, value)
             if hasattr(self, "_frozen"):
                 del self._frozen
 

@@ -147,9 +147,9 @@ class Midline(
             other_children["unknown"] = self.unknown
 
         if use_mixing:
-            self.mixing_param = 0.0
+            self.mixing_param = 0.5
 
-        self.midext_prob = 0.0
+        self.midext_prob = 0.5
 
         diagnosis_times.Composite.__init__(
             self,
@@ -489,7 +489,9 @@ class Midline(
         """
         last_param_idx = self.get_num_dims() - 1
         before, last, after = utils.popat(args, idx=last_param_idx)
-        self.midext_prob = kwargs.get("midext_prob", last) or self.midext_prob
+        if kwargs.get("midext_prob", last) is not None:
+            self.midext_prob = kwargs.get("midext_prob", last)
+
         args = self.set_spread_params(*(before + after), **kwargs)
         return self.set_distribution_params(*args, **kwargs)
 
