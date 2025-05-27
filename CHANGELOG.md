@@ -2,6 +2,46 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.3.4] - 2025-05-27
+
+### Bug Fixes
+
+- Don't use `or` when param may be 0.\
+  Since Python's expression `a = b or c` will assign `c` to `a` as soon as
+  `b` is "falsy", e.g. also when `b = 0.0`, I should not use this to check
+  if a parameter in the model is `None`.
+
+### Documentation
+
+- Fix misspelled repo link.
+- Remove empty mixins page.
+- Better reuse of README.
+- Move social card to repo root.\
+  This is actually for LyProX: I want to display the social card of all
+  repos in the lycosystem on LyProX's landing page. Therefore, they all
+  need to be in their expected places.
+
+### Miscellaneous Tasks
+
+- Add year range to license.
+
+### Testing
+
+- Use val != 0.5 to test matrix deletion.\
+  0.5 is the new initial value for most parameters, so it does not make
+  sense to use this to check if upon changing a parameter, the transition
+  matrix gets deleted.
+
+### Change
+
+- Init most params with 0.5 instead of 0.0.\
+  In some cases, initializing with 0.0 may have unintended consequences.
+  E.g., a probability of 0.0 cannot be renormalized.
+
+### Ci
+
+- Use OIDC for publishing.
+
 ## [1.3.3] - 2025-03-11
 
 ### Bug Fixes
@@ -866,6 +906,7 @@ Almost the entire API has changed. I'd therefore recommend to have a look at the
 - fix pyproject.toml typo
 - add pre-commit hook to check commit msg
 
+[1.3.4]: https://github.com/rmnldwg/lymph/compare/1.3.3...1.3.4
 [1.3.3]: https://github.com/rmnldwg/lymph/compare/1.3.2...1.3.3
 [1.3.2]: https://github.com/rmnldwg/lymph/compare/1.3.1...1.3.2
 [1.3.1]: https://github.com/rmnldwg/lymph/compare/1.3.0...1.3.1
