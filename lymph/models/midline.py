@@ -390,7 +390,7 @@ class Midline(
         ipsi_kwargs = global_kwargs.copy()
         ipsi_kwargs.update(kwargs.get("ipsi", {}))
         if self.use_central:
-            self.central.set_spread_params(*args, **ipsi_kwargs)
+            self.central.set_tumor_spread_params(*args, **ipsi_kwargs)
         self.ext.ipsi.set_tumor_spread_params(*args, **ipsi_kwargs)
         args = self.noext.ipsi.set_tumor_spread_params(*args, **ipsi_kwargs)
 
