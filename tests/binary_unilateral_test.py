@@ -132,7 +132,7 @@ class ParameterAssignmentTestCase(
         """Check if the transition matrix gets deleted when a parameter is set."""
         first_lnl_name = list(self.model.graph.lnls.values())[0].name
         trans_mat = self.model.transition_matrix()
-        self.model.graph.edges[f"Tto{first_lnl_name}"].set_spread_prob(0.5)
+        self.model.graph.edges[f"Tto{first_lnl_name}"].set_spread_prob(0.29579)
         self.assertFalse(np.all(trans_mat == self.model.transition_matrix()))
 
 
