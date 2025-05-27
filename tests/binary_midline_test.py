@@ -16,7 +16,11 @@ class MidlineSetParamsTestCase(
     """Check that the complex parameter assignment works correctly."""
 
     def setUp(self):
-        return super().setUp(use_central=True, use_midext_evo=False)
+        return super().setUp(
+            graph_size="medium",
+            use_central=True,
+            use_midext_evo=False,
+        )
 
     def test_init(self) -> None:
         """Check some basic attributes."""
@@ -75,6 +79,20 @@ class MidlineSetParamsTestCase(
         self.model.set_params(*params_to_set)
         self.assertEqual(self.model.midext_prob, expected_midext_prob)
 
+    def test_params_stay_synced(self) -> None:
+        """Ensure that a setting invalid params does not cause desync."""
+        param_names = self.model.get_params().keys()
+        values = np.linspace(0.0, 1.0, len(param_names))
+        params_to_set = {k: v for k, v in zip(param_names, values)}
+        params_to_set["IItoIII_spread"] = -10  # Invalid value
+        with self.assertRaises(ValueError):
+            self.model.set_params(**params_to_set)
+
+        try:
+            self.model.get_params()
+        except ValueError as e:
+            self.fail(f"Getting params failed with ValueError: {e}")
+
 
 class MidlineLikelihoodTestCase(
     fixtures.MidlineFixtureMixin,
@@ -114,7 +132,7 @@ class MidlineRiskTestCase(
 
     def setUp(self) -> None:
         """Set up the test case."""
-        super().setUp()
+        super().setUp(graph_size="small")
         self.init_diag_time_dists(early="frozen", late="parametric")
         self.model.set_modality("pathology", spec=1.0, sens=1.0, kind="pathological")
         self.model.set_params(
