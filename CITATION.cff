@@ -30,7 +30,7 @@ authors:
     email: jan.unkelbach@usz.ch
     affiliation: University Hospital Zurich
     orcid: 'https://orcid.org/0000-0002-4275-990X'
-repository-code: 'https://github.com/rmnldwg/lymph'
+repository-code: 'https://github.com/lycosystem/lymph'
 url: 'https://lymph-model.readthedocs.io/en/latest/'
 abstract: >-
   Python package for statistical modelling of

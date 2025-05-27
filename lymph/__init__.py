@@ -16,7 +16,7 @@ __version__ = version
 __description__ = "Package for statistical modelling of lymphatic metastatic spread."
 __author__ = "Roman Ludwig"
 __email__ = "roman.ludwig@usz.ch"
-__uri__ = "https://github.com/rmnldwg/lymph"
+__uri__ = "https://github.com/lycosystem/lymph"
 
 # nopycln: file
 

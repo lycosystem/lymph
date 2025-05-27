@@ -812,7 +812,7 @@ Also, I am now quite satisfied with the look and usability of the new API. Hopef
 
 ## [1.0.0.a1] - 2023-08-30
 
-Second alpha release, aimed at testing the all new implementation. See these [issues](https://github.com/rmnldwg/lymph/milestone/1) for an idea of what this tries to address.
+Second alpha release, aimed at testing the all new implementation. See these [issues](https://github.com/lycosystem/lymph/milestone/1) for an idea of what this tries to address.
 
 ### Bug Fixes
 
@@ -834,7 +834,7 @@ Second alpha release, aimed at testing the all new implementation. See these [is
 
 ## [1.0.0.a0] - 2023-08-15
 
-This alpha release is a reimplementation most of the package's API. It aims to solve some [issues](https://github.com/rmnldwg/lymph/milestone/1) that accumulated for a while.
+This alpha release is a reimplementation most of the package's API. It aims to solve some [issues](https://github.com/lycosystem/lymph/milestone/1) that accumulated for a while.
 
 ### Features
 
@@ -906,56 +906,56 @@ Almost the entire API has changed. I'd therefore recommend to have a look at the
 - fix pyproject.toml typo
 - add pre-commit hook to check commit msg
 
-[1.3.4]: https://github.com/rmnldwg/lymph/compare/1.3.3...1.3.4
-[1.3.3]: https://github.com/rmnldwg/lymph/compare/1.3.2...1.3.3
-[1.3.2]: https://github.com/rmnldwg/lymph/compare/1.3.1...1.3.2
-[1.3.1]: https://github.com/rmnldwg/lymph/compare/1.3.0...1.3.1
-[1.3.0]: https://github.com/rmnldwg/lymph/compare/1.2.3...1.3.0
-[1.2.3]: https://github.com/rmnldwg/lymph/compare/1.2.2...1.2.3
-[1.2.2]: https://github.com/rmnldwg/lymph/compare/1.2.1...1.2.2
-[1.2.1]: https://github.com/rmnldwg/lymph/compare/1.2.0...1.2.1
-[1.2.0]: https://github.com/rmnldwg/lymph/compare/1.1.0...1.2.0
-[1.1.0]: https://github.com/rmnldwg/lymph/compare/1.0.0...1.1.0
-[1.0.0]: https://github.com/rmnldwg/lymph/compare/1.0.0.rc2...1.0.0
-[1.0.0.rc2]: https://github.com/rmnldwg/lymph/compare/1.0.0.rc1...1.0.0.rc2
-[1.0.0.rc1]: https://github.com/rmnldwg/lymph/compare/1.0.0.a6...1.0.0.rc1
-[1.0.0.a6]: https://github.com/rmnldwg/lymph/compare/1.0.0.a5...1.0.0.a6
-[1.0.0.a5]: https://github.com/rmnldwg/lymph/compare/1.0.0.a4...1.0.0.a5
-[1.0.0.a4]: https://github.com/rmnldwg/lymph/compare/1.0.0.a3...1.0.0.a4
-[1.0.0.a3]: https://github.com/rmnldwg/lymph/compare/1.0.0.a2...1.0.0.a3
-[1.0.0.a2]: https://github.com/rmnldwg/lymph/compare/1.0.0.a1...1.0.0.a2
-[1.0.0.a1]: https://github.com/rmnldwg/lymph/compare/1.0.0.a0...1.0.0.a1
-[1.0.0.a0]: https://github.com/rmnldwg/lymph/compare/0.4.3...1.0.0.a0
-[0.4.3]: https://github.com/rmnldwg/lymph/compare/0.4.2...0.4.3
-[0.4.2]: https://github.com/rmnldwg/lymph/compare/0.4.1...0.4.2
-[0.4.1]: https://github.com/rmnldwg/lymph/compare/0.4.0...0.4.1
-[0.4.0]: https://github.com/rmnldwg/lymph/compare/0.3.10...0.4.0
+[1.3.4]: https://github.com/lycosystem/lymph/compare/1.3.3...1.3.4
+[1.3.3]: https://github.com/lycosystem/lymph/compare/1.3.2...1.3.3
+[1.3.2]: https://github.com/lycosystem/lymph/compare/1.3.1...1.3.2
+[1.3.1]: https://github.com/lycosystem/lymph/compare/1.3.0...1.3.1
+[1.3.0]: https://github.com/lycosystem/lymph/compare/1.2.3...1.3.0
+[1.2.3]: https://github.com/lycosystem/lymph/compare/1.2.2...1.2.3
+[1.2.2]: https://github.com/lycosystem/lymph/compare/1.2.1...1.2.2
+[1.2.1]: https://github.com/lycosystem/lymph/compare/1.2.0...1.2.1
+[1.2.0]: https://github.com/lycosystem/lymph/compare/1.1.0...1.2.0
+[1.1.0]: https://github.com/lycosystem/lymph/compare/1.0.0...1.1.0
+[1.0.0]: https://github.com/lycosystem/lymph/compare/1.0.0.rc2...1.0.0
+[1.0.0.rc2]: https://github.com/lycosystem/lymph/compare/1.0.0.rc1...1.0.0.rc2
+[1.0.0.rc1]: https://github.com/lycosystem/lymph/compare/1.0.0.a6...1.0.0.rc1
+[1.0.0.a6]: https://github.com/lycosystem/lymph/compare/1.0.0.a5...1.0.0.a6
+[1.0.0.a5]: https://github.com/lycosystem/lymph/compare/1.0.0.a4...1.0.0.a5
+[1.0.0.a4]: https://github.com/lycosystem/lymph/compare/1.0.0.a3...1.0.0.a4
+[1.0.0.a3]: https://github.com/lycosystem/lymph/compare/1.0.0.a2...1.0.0.a3
+[1.0.0.a2]: https://github.com/lycosystem/lymph/compare/1.0.0.a1...1.0.0.a2
+[1.0.0.a1]: https://github.com/lycosystem/lymph/compare/1.0.0.a0...1.0.0.a1
+[1.0.0.a0]: https://github.com/lycosystem/lymph/compare/0.4.3...1.0.0.a0
+[0.4.3]: https://github.com/lycosystem/lymph/compare/0.4.2...0.4.3
+[0.4.2]: https://github.com/lycosystem/lymph/compare/0.4.1...0.4.2
+[0.4.1]: https://github.com/lycosystem/lymph/compare/0.4.0...0.4.1
+[0.4.0]: https://github.com/lycosystem/lymph/compare/0.3.10...0.4.0
 
-[#95]: https://github.com/rmnldwg/lymph/issues/95
-[#88]: https://github.com/rmnldwg/lymph/issues/88
-[#87]: https://github.com/rmnldwg/lymph/issues/87
-[#85]: https://github.com/rmnldwg/lymph/issues/85
-[#80]: https://github.com/rmnldwg/lymph/issues/80
-[#79]: https://github.com/rmnldwg/lymph/issues/79
-[#77]: https://github.com/rmnldwg/lymph/issues/77
-[#74]: https://github.com/rmnldwg/lymph/issues/74
-[#72]: https://github.com/rmnldwg/lymph/issues/72
-[#69]: https://github.com/rmnldwg/lymph/issues/69
-[#68]: https://github.com/rmnldwg/lymph/issues/68
-[#65]: https://github.com/rmnldwg/lymph/issues/65
-[#64]: https://github.com/rmnldwg/lymph/issues/64
-[#62]: https://github.com/rmnldwg/lymph/issues/62
-[#61]: https://github.com/rmnldwg/lymph/issues/61
-[#60]: https://github.com/rmnldwg/lymph/issues/60
-[#57]: https://github.com/rmnldwg/lymph/issues/57
-[#56]: https://github.com/rmnldwg/lymph/issues/56
-[#53]: https://github.com/rmnldwg/lymph/issues/53
-[#46]: https://github.com/rmnldwg/lymph/issues/46
-[#45]: https://github.com/rmnldwg/lymph/issues/45
-[#42]: https://github.com/rmnldwg/lymph/issues/42
-[#41]: https://github.com/rmnldwg/lymph/issues/41
-[#40]: https://github.com/rmnldwg/lymph/issues/40
-[#38]: https://github.com/rmnldwg/lymph/issues/38
+[#95]: https://github.com/lycosystem/lymph/issues/95
+[#88]: https://github.com/lycosystem/lymph/issues/88
+[#87]: https://github.com/lycosystem/lymph/issues/87
+[#85]: https://github.com/lycosystem/lymph/issues/85
+[#80]: https://github.com/lycosystem/lymph/issues/80
+[#79]: https://github.com/lycosystem/lymph/issues/79
+[#77]: https://github.com/lycosystem/lymph/issues/77
+[#74]: https://github.com/lycosystem/lymph/issues/74
+[#72]: https://github.com/lycosystem/lymph/issues/72
+[#69]: https://github.com/lycosystem/lymph/issues/69
+[#68]: https://github.com/lycosystem/lymph/issues/68
+[#65]: https://github.com/lycosystem/lymph/issues/65
+[#64]: https://github.com/lycosystem/lymph/issues/64
+[#62]: https://github.com/lycosystem/lymph/issues/62
+[#61]: https://github.com/lycosystem/lymph/issues/61
+[#60]: https://github.com/lycosystem/lymph/issues/60
+[#57]: https://github.com/lycosystem/lymph/issues/57
+[#56]: https://github.com/lycosystem/lymph/issues/56
+[#53]: https://github.com/lycosystem/lymph/issues/53
+[#46]: https://github.com/lycosystem/lymph/issues/46
+[#45]: https://github.com/lycosystem/lymph/issues/45
+[#42]: https://github.com/lycosystem/lymph/issues/42
+[#41]: https://github.com/lycosystem/lymph/issues/41
+[#40]: https://github.com/lycosystem/lymph/issues/40
+[#38]: https://github.com/lycosystem/lymph/issues/38
 
 [ruff]: https://astral.sh/ruff
 [pytest]: https://docs.pytest.org/en/stable/
