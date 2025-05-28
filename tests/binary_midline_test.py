@@ -124,6 +124,34 @@ class MidlineLikelihoodTestCase(
         self.assertLessEqual(self.model.likelihood(), 0)
 
 
+class MidlineNoEvoLikelihoodTestCase(
+    fixtures.MidlineFixtureMixin,
+    unittest.TestCase,
+):
+    """Check that the likelihood function works correctly."""
+
+    def setUp(self) -> None:
+        """Set up the test case."""
+        super().setUp(use_midext_evo=False)
+        self.init_diag_time_dists(early="frozen", late="parametric")
+        self.model.set_modality("pathology", spec=1.0, sens=1.0, kind="pathological")
+        self.model.load_patient_data(
+            pd.read_csv("./tests/data/2021-usz-oropharynx.csv", header=[0, 1, 2]),
+        )
+
+    def test_likelihoods_are_sum(self) -> None:
+        """Midline likelihood must be sum of bilateral likelihoods."""
+        params_to_set = {k: self.rng.uniform() for k in self.model.get_params().keys()}
+        self.model.set_params(**params_to_set)
+
+        midline_llh = self.model.likelihood()
+        bilateral_llh = (
+            self.model.ext.likelihood()
+            + self.model.noext.likelihood()
+        )
+        self.assertAlmostEqual(midline_llh, bilateral_llh)
+
+
 class MidlineRiskTestCase(
     fixtures.MidlineFixtureMixin,
     unittest.TestCase,
