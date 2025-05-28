@@ -570,33 +570,31 @@ class Midline(
 
         if not self.use_midext_evo:
             ext_contra_dist_evo = self.ext.contra.state_dist_evo()
-            noext_contra_dist_evo *= 1.0 - self.midext_prob
-            ext_contra_dist_evo *= self.midext_prob
+            return noext_contra_dist_evo, ext_contra_dist_evo
 
-        else:
-            ext_contra_dist_evo = np.zeros_like(noext_contra_dist_evo)
-            midext_evo = self.midext_evo()
+        ext_contra_dist_evo = np.zeros_like(noext_contra_dist_evo)
+        midext_evo = self.midext_evo()
 
-            # Evolution of contralateral state dists, given no midline extension,
-            # multiplied with the probabilities of having no midline extension at all
-            # time steps, resulting in a vector of length `max_time + 1`:
-            #     P(X_c[t] | noext) * P(noext | t)
-            noext_contra_dist_evo *= midext_evo[:, 0].reshape(-1, 1)
+        # Evolution of contralateral state dists, given no midline extension,
+        # multiplied with the probabilities of having no midline extension at all
+        # time steps, resulting in a vector of length `max_time + 1`:
+        #     P(X_c[t] | noext) * P(noext | t)
+        noext_contra_dist_evo *= midext_evo[:, 0].reshape(-1, 1)
 
-            for t in range(self.max_time):
-                # For the case of midline extension, we need to consider all possible
-                # paths that lead to a midline extension at time t+1. We can define
-                # this recursively:
-                ext_contra_dist_evo[t + 1] = (
-                    # it's the probability of developing it just now, in which case we
-                    # use the noext state and multiply it with the probability to
-                    # develop midline extension at this time step, ...
-                    self.midext_prob * noext_contra_dist_evo[t]
-                    # ... plus the probability of having it already, in which case we
-                    # use the ext state. The probability of "keeping" the midline
-                    # extension is 1, so we don't need to multiply it with anything.
-                    + ext_contra_dist_evo[t]
-                ) @ self.ext.contra.transition_matrix()  # then evolve using ext model
+        for t in range(self.max_time):
+            # For the case of midline extension, we need to consider all possible
+            # paths that lead to a midline extension at time t+1. We can define
+            # this recursively:
+            ext_contra_dist_evo[t + 1] = (
+                # it's the probability of developing it just now, in which case we
+                # use the noext state and multiply it with the probability to
+                # develop midline extension at this time step, ...
+                self.midext_prob * noext_contra_dist_evo[t]
+                # ... plus the probability of having it already, in which case we
+                # use the ext state. The probability of "keeping" the midline
+                # extension is 1, so we don't need to multiply it with anything.
+                + ext_contra_dist_evo[t]
+            ) @ self.ext.contra.transition_matrix()  # then evolve using ext model
 
         return noext_contra_dist_evo, ext_contra_dist_evo
 
@@ -687,11 +685,14 @@ class Midline(
             num_states = ipsi_dist_evo.shape[1]
             marg_joint_state_dist = np.zeros(shape=(num_states, num_states))
             # see the `Bilateral` model for why this is done in this way.
-            for case in ["ext", "noext"]:
+            for case, marg_factor in [
+                ("ext", self.midext_prob),
+                ("noext", 1.0 - self.midext_prob),
+            ]:
                 joint_state_dist = (
                     ipsi_dist_evo.T @ diag_time_matrix @ contra_dist_evo[case]
                 )
-                marg_joint_state_dist += joint_state_dist
+                marg_joint_state_dist += marg_factor * joint_state_dist
                 _model = getattr(self, case)
                 patient_llhs = matrix.fast_trace(
                     _model.ipsi.diagnosis_matrix(stage),
