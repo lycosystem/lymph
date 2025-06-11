@@ -331,7 +331,7 @@ class Edge:
         return isinstance(self.parent, Tumor)
 
     def get_micro_mod(self) -> float:
-        """Return the spread probability."""
+        """Return the spread modifier for LNLs with microscopic involvement."""
         if (
             not hasattr(self, "_micro_mod")
             or isinstance(self.parent, Tumor)
