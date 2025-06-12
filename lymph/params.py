@@ -6,26 +6,18 @@ from abc import abstractmethod
 from typing import Protocol
 
 
-class HasGetParams(Protocol):
-    """Protocol for objects that can return their parameters as a dictionary."""
+class ParamsLeaf(Protocol):
+    """Protocol for objects that can get and set params via private methods."""
 
     @abstractmethod
-    def get_params(self) -> dict[str, float]:
+    def _get_params(self) -> dict[str, float]:
         """Get the parameters of the model as a dictionary."""
         raise NotImplementedError
 
-
-class HasSetParams(Protocol):
-    """Protocol for objects that can set their parameters from a dictionary."""
-
     @abstractmethod
-    def set_params(self, *args: float, **kwargs: dict[str, float]) -> None:
+    def _set_params(self, *args: float, **kwargs: dict[str, float]) -> None:
         """Set the parameters of the model from a dictionary."""
         raise NotImplementedError
-
-
-class HasGetAndSetParams(HasGetParams, HasSetParams):
-    """Protocol for objects that can get and set their parameters."""
 
 
 class ParamsManager:
@@ -70,39 +62,44 @@ class ParamsManager:
      'middle2_qux_foo': 3.0}
     """
 
+    # Note: We use name mangling in this class, to avoid clashes with
+    # attributes of the `DistributionManager` and `ModalityManager` mixins.
+
+    __children: dict[str, ParamsLeaf | ParamsManager]
+
     def __init__(
         self,
-        params_children: dict[str, HasGetAndSetParams | ParamsManager],
+        children: dict[str, ParamsLeaf | ParamsManager],
     ) -> None:
         """Define the children of the model."""
-        if len(params_children) == 0:
+        if len(children) == 0:
             raise ValueError("ParamsManager must have at least one child.")
 
-        self._params_children = params_children
+        self.__children = children
 
-    def get_params(self) -> dict[str, float]:
+    def _get_params(self) -> dict[str, float]:
         """Get the parameters of the model as a dictionary."""
         params = {}
 
-        for child_name, child in self._params_children.items():
-            child_params = child.get_params()
+        for child_name, child in self.__children.items():
+            child_params = child._get_params()
             for param_name, param_value in child_params.items():
                 full_param_name = f"{child_name}_{param_name}"
                 params[full_param_name] = param_value
 
         return params
 
-    def set_params(self, *args: float, **kwargs: dict[str, float]) -> None:
+    def _set_params(self, *args: float, **kwargs: dict[str, float]) -> None:
         """Set the parameters of the model from a dictionary."""
-        new_params = dict(zip(self.get_params().keys(), args, strict=False))
+        new_params = dict(zip(self._get_params(), args, strict=False))
         new_params.update(kwargs)
 
         for param_name, param_value in new_params.items():
             start, _, rest = param_name.partition("_")
 
-            if start in self._params_children:
-                child = self._params_children[start]
-                child.set_params(**{rest: param_value})
+            if start in self.__children:
+                child = self.__children[start]
+                child._set_params(**{rest: param_value})
             else:
-                for child in self._params_children.values():
-                    child.set_params(**{param_name: param_value})
+                for child in self.__children.values():
+                    child._set_params(**{param_name: param_value})
