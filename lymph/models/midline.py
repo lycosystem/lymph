@@ -10,7 +10,10 @@ from typing import Any, Literal
 import numpy as np
 import pandas as pd
 
-from lymph import diagnosis_times, matrix, modalities, models, types, utils
+from lymph import matrix, models, types, utils
+from lymph.diagnosis_times import DistributionManager
+from lymph.modalities import ModalityManager
+from lymph.params import ParamsManager
 
 warnings.filterwarnings("ignore", category=pd.errors.PerformanceWarning)
 logger = logging.getLogger(__name__)
@@ -21,8 +24,9 @@ CENTRAL_COL = ("tumor", "1", "central")
 
 
 class Midline(
-    diagnosis_times.Composite,
-    modalities.Composite,
+    ParamsManager,
+    DistributionManager,
+    ModalityManager,
     types.Model,
 ):
     r"""Models metastatic progression bilaterally with tumor lateralization.
@@ -126,7 +130,7 @@ class Midline(
                 # Actually, this shouldn't be too hard, but we still need to think
                 # about it for a bit.
             )
-        other_children = {}
+        children = {"ext": self.ext, "noext": self.noext}
         if use_central:
             self._central = models.Bilateral(
                 graph_dict=graph_dict,
@@ -136,7 +140,7 @@ class Midline(
                     "lnl_spread": self.is_symmetric["lnl_spread"],
                 },
             )
-            other_children["central"] = self.central
+            children["central"] = self.central
 
         if marginalize_unknown:
             self._unknown = models.Bilateral(
@@ -144,27 +148,16 @@ class Midline(
                 uni_kwargs=uni_kwargs,
                 is_symmetric=self.is_symmetric,
             )
-            other_children["unknown"] = self.unknown
+            children["unknown"] = self.unknown
 
         if use_mixing:
             self.mixing_param = 0.5
 
         self.midext_prob = 0.5
 
-        diagnosis_times.Composite.__init__(
-            self,
-            distribution_children={
-                "ext": self.ext,
-                "noext": self.noext,
-                **other_children,
-            },
-            is_distribution_leaf=False,
-        )
-        modalities.Composite.__init__(
-            self,
-            modality_children={"ext": self.ext, "noext": self.noext, **other_children},
-            is_modality_leaf=False,
-        )
+        ParamsManager.__init__(self, children=children)
+        DistributionManager.__init__(self, children=children, is_leaf=False)
+        ModalityManager.__init__(self, children=children, is_leaf=False)
 
         if named_params is not None:
             self.named_params = named_params
@@ -253,103 +246,7 @@ class Midline(
             "This instance does not marginalize over unknown midline extension.",
         )
 
-    def get_tumor_spread_params(
-        self,
-        as_dict: bool = True,
-        as_flat: bool = True,
-    ) -> dict[str, float] | Iterable[float]:
-        """Return the tumor spread parameters of the model.
-
-        If the model uses the mixing parameter, the returned params will contain the
-        ipsilateral spread from tumor to LNLs, the contralateral ones for the case of
-        no midline extension, and the mixing parameter. Otherwise, it will contain the
-        contralateral params for the cases of present and absent midline extension.
-        """
-        params = {}
-        params["ipsi"] = self.ext.ipsi.get_tumor_spread_params(as_flat=as_flat)
-
-        if self.use_mixing:
-            params["contra"] = self.noext.contra.get_tumor_spread_params(
-                as_flat=as_flat,
-            )
-            params["mixing"] = self.mixing_param
-        else:
-            params["noext"] = {
-                "contra": self.noext.contra.get_tumor_spread_params(as_flat=as_flat),
-            }
-            params["ext"] = {
-                "contra": self.ext.contra.get_tumor_spread_params(as_flat=as_flat),
-            }
-
-        if as_flat or not as_dict:
-            params = utils.flatten(params)
-
-        return params if as_dict else params.values()
-
-    def get_lnl_spread_params(
-        self,
-        as_dict: bool = True,
-        as_flat: bool = True,
-    ) -> dict[str, float] | Iterable[float]:
-        """Return the LNL spread parameters of the model.
-
-        Depending on the value of ``is_symmetric["lnl_spread"]``, the returned params
-        may contain only one set of spread parameters (if ``True``) or one for the ipsi-
-        and one for the contralateral side (if ``False``).
-        """
-        ext_lnl_params = self.ext.get_lnl_spread_params(as_flat=False)
-        noext_lnl_params = self.noext.get_lnl_spread_params(as_flat=False)
-
-        if ext_lnl_params != noext_lnl_params:
-            warnings.warn(
-                "LNL spread params not synched between ext and noext models. "
-                "Returning the ext params.",
-            )
-
-        if self.use_central:
-            central_lnl_params = self.central.get_lnl_spread_params(as_flat=False)
-            if central_lnl_params != ext_lnl_params:
-                warnings.warn(
-                    "LNL spread params not synched between central and ext models. "
-                    "Returning the ext params.",
-                )
-
-        if as_flat or not as_dict:
-            ext_lnl_params = utils.flatten(ext_lnl_params)
-
-        return ext_lnl_params if as_dict else ext_lnl_params.values()
-
-    def get_spread_params(
-        self,
-        as_dict: bool = True,
-        as_flat: bool = True,
-    ) -> dict[str, float] | Iterable[float]:
-        """Return the spread parameters of the model.
-
-        This combines the returned values from the calls to
-        :py:meth:`get_tumor_spread_params` and :py:meth:`get_lnl_spread_params`.
-        """
-        params = self.get_tumor_spread_params(as_flat=False)
-        lnl_spread_params = self.get_lnl_spread_params(as_flat=False)
-
-        if self.is_symmetric["lnl_spread"]:
-            params.update(lnl_spread_params)
-        else:
-            if "contra" not in params:
-                params["contra"] = {}
-            params["ipsi"].update(lnl_spread_params["ipsi"])
-            params["contra"].update(lnl_spread_params["contra"])
-
-        if as_flat or not as_dict:
-            params = utils.flatten(params)
-
-        return params if as_dict else params.values()
-
-    def get_params(
-        self,
-        as_dict: bool = True,
-        as_flat: bool = True,
-    ) -> types.ParamsType:
+    def _get_params(self) -> dict[str, float]:
         """Return all the parameters of the model.
 
         Includes the spread parameters from the call to :py:meth:`get_spread_params`
@@ -357,129 +254,9 @@ class Midline(
         :py:meth:`~.diagnosis_times.Composite.get_distribution_params`. It also appends
         the probability of midline extension to the end of the returned params.
         """
-        params = {}
-        params.update(self.get_spread_params(as_flat=as_flat))
-        params.update(self.get_distribution_params(as_flat=as_flat))
-        params["midext_prob"] = self.midext_prob
+        return super()._get_params()
 
-        if as_flat or not as_dict:
-            params = utils.flatten(params)
-
-        return params if as_dict else params.values()
-
-    def set_tumor_spread_params(
-        self,
-        *args: float,
-        **kwargs: float,
-    ) -> types.ParamsType:
-        """Set the spread parameters of the midline model.
-
-        In analogy to the :py:meth:`get_tumor_spread_params` method, this method sets
-        the parameters describing how the tumor spreads to the LNLs. How many params
-        to provide to this model depends on the value of the ``use_mixing`` and the
-        ``use_central`` attributes. Have a look at what the
-        :py:meth:`get_tumor_spread_params` method returns for an insight in what you
-        can provide.
-        """
-        kwargs, global_kwargs = utils.unflatten_and_split(
-            kwargs,
-            expected_keys=["ipsi", "noext", "ext", "contra"],
-        )
-
-        # first, take care of ipsilateral tumor spread (same for all models)
-        ipsi_kwargs = global_kwargs.copy()
-        ipsi_kwargs.update(kwargs.get("ipsi", {}))
-        if self.use_central:
-            self.central.set_tumor_spread_params(*args, **ipsi_kwargs)
-        self.ext.ipsi.set_tumor_spread_params(*args, **ipsi_kwargs)
-        args = self.noext.ipsi.set_tumor_spread_params(*args, **ipsi_kwargs)
-
-        # then, take care of contralateral tumor spread
-        if self.use_mixing:
-            contra_kwargs = global_kwargs.copy()
-            contra_kwargs.update(kwargs.get("contra", {}))
-            args = self.noext.contra.set_tumor_spread_params(*args, **contra_kwargs)
-            mixing_param, args = utils.popfirst(args)
-            mixing_param = (
-                global_kwargs.get("mixing", mixing_param) or self.mixing_param
-            )
-            self.mixing_param = global_kwargs.get("mixing", mixing_param)
-
-            ext_contra_kwargs = {}
-            for (key, ipsi_param), noext_contra_param in zip(
-                self.ext.ipsi.get_tumor_spread_params().items(),
-                self.noext.contra.get_tumor_spread_params().values(),
-                strict=False,
-            ):
-                ext_contra_kwargs[key] = (
-                    self.mixing_param * ipsi_param
-                    + (1.0 - self.mixing_param) * noext_contra_param
-                )
-            self.ext.contra.set_tumor_spread_params(**ext_contra_kwargs)
-
-        else:
-            noext_contra_kwargs = global_kwargs.copy()
-            noext_contra_kwargs.update(kwargs.get("noext", {}).get("contra", {}))
-            args = self.noext.contra.set_tumor_spread_params(
-                *args,
-                **noext_contra_kwargs,
-            )
-
-            ext_contra_kwargs = global_kwargs.copy()
-            ext_contra_kwargs.update(kwargs.get("ext", {}).get("contra", {}))
-            args = self.ext.contra.set_tumor_spread_params(*args, **ext_contra_kwargs)
-
-        return args
-
-    def set_lnl_spread_params(self, *args: float, **kwargs: float) -> Iterable[float]:
-        """Set the LNL spread parameters of the midline model.
-
-        This works exactly like the :py:meth:`.Bilateral.set_lnl_spread_params` for the
-        user, but under the hood, the parameters also need to be distributed to two or
-        three instances of :py:class:`~.Bilateral` depending on the value of the
-        ``use_central`` attribute.
-        """
-        kwargs, global_kwargs = utils.unflatten_and_split(
-            kwargs,
-            expected_keys=["ipsi", "noext", "ext", "contra"],
-        )
-        ipsi_kwargs = global_kwargs.copy()
-        ipsi_kwargs.update(kwargs.get("ipsi", {}))
-
-        if self.is_symmetric["lnl_spread"]:
-            if self.use_central:
-                self.central.ipsi.set_lnl_spread_params(*args, **global_kwargs)
-                self.central.contra.set_lnl_spread_params(*args, **global_kwargs)
-            self.ext.ipsi.set_lnl_spread_params(*args, **global_kwargs)
-            self.ext.contra.set_lnl_spread_params(*args, **global_kwargs)
-            self.noext.ipsi.set_lnl_spread_params(*args, **global_kwargs)
-            args = self.noext.contra.set_lnl_spread_params(*args, **global_kwargs)
-
-        else:
-            if self.use_central:
-                self.central.ipsi.set_lnl_spread_params(*args, **ipsi_kwargs)
-            self.ext.ipsi.set_lnl_spread_params(*args, **ipsi_kwargs)
-            args = self.noext.ipsi.set_lnl_spread_params(*args, **ipsi_kwargs)
-
-            contra_kwargs = global_kwargs.copy()
-            contra_kwargs.update(kwargs.get("contra", {}))
-            if self.use_central:
-                self.central.contra.set_lnl_spread_params(*args, **contra_kwargs)
-            self.ext.contra.set_lnl_spread_params(*args, **contra_kwargs)
-            args = self.noext.contra.set_lnl_spread_params(*args, **contra_kwargs)
-
-        return args
-
-    def set_spread_params(self, *args: float, **kwargs: float) -> Iterable[float]:
-        """Set the spread parameters of the midline model."""
-        args = self.set_tumor_spread_params(*args, **kwargs)
-        return self.set_lnl_spread_params(*args, **kwargs)
-
-    def set_params(
-        self,
-        *args: float,
-        **kwargs: float,
-    ) -> Iterable[float]:
+    def _set_params(self, *args: float, **kwargs: float) -> None:
         """Set all parameters of the model.
 
         Combines the calls to :py:meth:`.set_spread_params` and
@@ -487,13 +264,7 @@ class Midline(
         for midline extension. Note that this parameter is always the last one that
         is set after the spread and distribution parameters.
         """
-        last_param_idx = self.get_num_dims() - 1
-        before, last, after = utils.popat(args, idx=last_param_idx)
-        if kwargs.get("midext_prob", last) is not None:
-            self.midext_prob = kwargs.get("midext_prob", last)
-
-        args = self.set_spread_params(*(before + after), **kwargs)
-        return self.set_distribution_params(*args, **kwargs)
+        return super()._set_params(*args, **kwargs)
 
     def load_patient_data(
         self,

@@ -30,8 +30,8 @@ RAW_T_COL = ("tumor", "1", "t_stage")
 
 
 class Unilateral(
-    diagnosis_times.Composite,
-    modalities.Composite,
+    diagnosis_times.DistributionManager,
+    modalities.ModalityManager,
     types.Model,
 ):
     """Class that models metastatic progression in a unilateral lymphatic system.
@@ -96,12 +96,13 @@ class Unilateral(
             tumor_state=tumor_state,
             allowed_states=allowed_states,
         )
-        diagnosis_times.Composite.__init__(
+        diagnosis_times.DistributionManager.__init__(
             self,
             max_time=max_time,
-            is_distribution_leaf=True,
+            is_leaf=True,
         )
-        modalities.Composite.__init__(self, is_modality_leaf=True)
+        modalities.ModalityManager.__init__(self, is_leaf=True)
+
         self._patient_data: pd.DataFrame | None = None
         self._cache_version: int = 0
         self._data_matrix_cache: LRUCache = LRUCache(maxsize=64)

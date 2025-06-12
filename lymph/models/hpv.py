@@ -11,7 +11,10 @@ from typing import Any, Literal
 import numpy as np
 import pandas as pd
 
-from lymph import diagnosis_times, modalities, models, types, utils
+from lymph import models, types, utils
+from lymph.diagnosis_times import DistributionManager
+from lymph.modalities import ModalityManager
+from lymph.params import ParamsManager
 
 warnings.filterwarnings("ignore", category=pd.errors.PerformanceWarning)
 logger = logging.getLogger(__name__)
@@ -32,8 +35,9 @@ def select_hpv_model(method):
 
 
 class HPVUnilateral(
-    diagnosis_times.Composite,
-    modalities.Composite,
+    ParamsManager,
+    DistributionManager,
+    ModalityManager,
     types.Model,
 ):
     """Class that models metastatic progression in HPV and non HPV lymphatic systems.
@@ -77,17 +81,11 @@ class HPVUnilateral(
             hpv_kwargs=hpv_kwargs,
             nohpv_kwargs=nohpv_kwargs,
         )
+        children = {"hpv": self.hpv, "nohpv": self.nohpv}
 
-        diagnosis_times.Composite.__init__(
-            self,
-            distribution_children={"hpv": self.hpv, "nohpv": self.nohpv},
-            is_distribution_leaf=False,
-        )
-        modalities.Composite.__init__(
-            self,
-            modality_children={"hpv": self.hpv, "nohpv": self.nohpv},
-            is_modality_leaf=False,
-        )
+        ParamsManager.__init__(self, children=children)
+        DistributionManager.__init__(self, children=children, is_leaf=False)
+        ModalityManager.__init__(self, children=children, is_leaf=False)
 
         if named_params is not None:
             self.named_params = named_params
