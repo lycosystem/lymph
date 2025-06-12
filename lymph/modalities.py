@@ -13,6 +13,7 @@ from abc import ABC, abstractmethod
 from typing import Literal, TypeVar
 
 import numpy as np
+from deprecated import deprecated
 
 
 class Modality:
@@ -156,39 +157,45 @@ class Pathological(Modality):
         return np.vstack([binary_confusion_matrix, binary_confusion_matrix[1]])
 
 
-MC = TypeVar("MC", bound="Composite")
+MC = TypeVar("MC", bound="ModalityManager")
 
 
-class Composite(ABC):
-    """Abstract base class implementing the composite pattern for diagnostic modalities.
+class ModalityManager(ABC):
+    """Mixin that allows managing modalities in nested models.
+
+    This is an abstract base class implementing the composite pattern for diagnostic
+    modalities.
 
     Any class inheriting from this class should be able to handle the definition of
     diagnostic modalities and their sensitivity/specificity values,
     """
 
+    # Note: We use name mangling in this class, to avoid clashes with
+    # attributes of the `ParamsManager` and `DistributionManager` mixins.
+
     _is_trinary: bool
     _modalities: dict[str, Modality]  # only for leaf nodes
-    _modality_children: dict[str, Composite]
+    __children: dict[str, ModalityManager]
 
     def __init__(
         self: MC,
-        modality_children: dict[str, Composite] = None,
-        is_modality_leaf: bool = False,
+        children: dict[str, ModalityManager] = None,
+        is_leaf: bool = False,
     ) -> None:
         """Initialize the modality composite."""
-        if modality_children is None:
-            modality_children = {}
+        if children is None:
+            children = {}
 
-        if is_modality_leaf:
+        if is_leaf:
             self._modalities = {}
-            modality_children = {}  # ignore any provided children
+            children = {}  # ignore any provided children
 
-        self._modality_children = modality_children
+        self.__children = children
 
     @property
-    def _is_modality_leaf(self: MC) -> bool:
+    def __is_leaf(self: MC) -> bool:
         """Return whether the composite is a leaf node."""
-        if len(self._modality_children) > 0:
+        if len(self.__children) > 0:
             return False
 
         if not hasattr(self, "_modalities"):
@@ -207,12 +214,12 @@ class Composite(ABC):
         See the :py:meth:`.Modality.__hash__` method for more information.
         """
         hash_res = 0
-        if self._is_modality_leaf:
+        if self.__is_leaf:
             for name, modality in self._modalities.items():
                 hash_res = hash((hash_res, name, hash(modality)))
 
         else:
-            for child in self._modality_children.values():
+            for child in self.__children.values():
                 hash_res = hash((hash_res, child.modalities_hash()))
 
         return hash_res
@@ -229,15 +236,15 @@ class Composite(ABC):
         This means one should NOT try to set the modalities via the returned dictionary
         of this method. Instead, use the :py:meth:`.set_modality` method.
         """
-        if self._is_modality_leaf:
+        if self.__is_leaf:
             return self._modalities
 
-        child_keys = list(self._modality_children.keys())
-        first_child = self._modality_children[child_keys[0]]
+        child_keys = list(self.__children.keys())
+        first_child = self.__children[child_keys[0]]
         firs_modalities = first_child.get_all_modalities()
         are_all_equal = True
         for key in child_keys[1:]:
-            other_child = self._modality_children[key]
+            other_child = self.__children[key]
             are_all_equal &= firs_modalities == other_child.get_all_modalities()
 
         if not are_all_equal:
@@ -253,26 +260,26 @@ class Composite(ABC):
         kind: Literal["clinical", "pathological"] = "clinical",
     ) -> None:
         """Set the modality with the given ``name``."""
-        if self._is_modality_leaf:
+        if self.__is_leaf:
             cls = Pathological if kind == "pathological" else Clinical
             self._modalities[name] = cls(spec, sens, self.is_trinary)
 
         else:
-            for child in self._modality_children.values():
+            for child in self.__children.values():
                 child.set_modality(name, spec, sens, kind)
 
     def del_modality(self: MC, name: str) -> None:
         """Delete the modality with the given ``name``."""
-        if self._is_modality_leaf:
+        if self.__is_leaf:
             del self._modalities[name]
 
         else:
-            for child in self._modality_children.values():
+            for child in self.__children.values():
                 child.del_modality(name)
 
     def replace_all_modalities(self: MC, modalities: dict[str, Modality]) -> None:
         """Replace all modalities of the composite with new ``modalities``."""
-        if self._is_modality_leaf:
+        if self.__is_leaf:
             self.clear_modalities()
             for name, modality in modalities.items():
                 kind = (
@@ -281,14 +288,19 @@ class Composite(ABC):
                 self.set_modality(name, modality.spec, modality.sens, kind)
 
         else:
-            for child in self._modality_children.values():
+            for child in self.__children.values():
                 child.replace_all_modalities(modalities)
 
     def clear_modalities(self: MC) -> None:
         """Clear all modalities of the composite."""
-        if self._is_modality_leaf:
+        if self.__is_leaf:
             self._modalities.clear()
 
         else:
-            for child in self._modality_children.values():
+            for child in self.__children.values():
                 child.clear_modalities()
+
+
+@deprecated(reason="Use ModalityManager instead.", version="1.4.0")
+class Composite(ModalityManager):
+    """Deprecated alias for ModalityManager."""
