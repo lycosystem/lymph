@@ -42,7 +42,7 @@ class BilateralInitTest(BilateralModelMixin, unittest.TestCase):
         rand_ipsi_param = self.rng.choice(
             list(self.model.ipsi.get_params(as_dict=True).keys())
         )
-        self.model.set_params(**{f"ipsi_{rand_ipsi_param}": self.rng.random()})
+        self.model._set_params(**{f"ipsi_{rand_ipsi_param}": self.rng.random()})
         self.assertFalse(np.all(ipsi_trans_mat == self.model.ipsi.transition_matrix()))
         self.assertFalse(
             np.all(contra_trans_mat == self.model.contra.transition_matrix())
@@ -180,7 +180,7 @@ class NoSymmetryParamsTestCase(
         """Test that the parameters can be retrieved."""
         ipsi_args = list(self.model.ipsi.get_params(as_dict=False))
         contra_args = list(self.model.contra.get_params(as_dict=False))
-        both_args = list(self.model.get_params(as_dict=False))
+        both_args = list(self.model._get_params(as_dict=False))
         num_param_dists = len(self.model.get_distribution_params())
         # need plus one, because distribution's parameter is accounted for twice
         self.assertEqual(len(ipsi_args) + len(contra_args), len(both_args) + 1)
@@ -193,7 +193,7 @@ class NoSymmetryParamsTestCase(
         """Test that the parameters can be retrieved."""
         ipsi_dict = self.model.ipsi.get_params(as_dict=True)
         contra_dict = self.model.contra.get_params(as_dict=True)
-        both_dict = self.model.get_params(as_dict=True, as_flat=False)
+        both_dict = self.model._get_params(as_dict=True, as_flat=False)
         dist_param_keys = self.model.get_distribution_params().keys()
 
         for key in dist_param_keys:
@@ -219,7 +219,7 @@ class NoSymmetryParamsTestCase(
         )
         dist_params = self.rng.uniform(size=len(self.model.get_distribution_params()))
 
-        self.model.set_params(
+        self.model._set_params(
             *ipsi_tumor_spread_args,
             *contra_tumor_spread_args,
             *ipsi_lnl_spread_args,
@@ -241,9 +241,9 @@ class NoSymmetryParamsTestCase(
 
     def test_set_params_as_dict(self):
         """Test that the parameters can be set via keyword arguments."""
-        params_to_set = {k: self.rng.uniform() for k in self.model.get_params().keys()}
-        self.model.set_params(**params_to_set)
-        self.assertEqual(params_to_set, self.model.get_params())
+        params_to_set = {k: self.rng.uniform() for k in self.model._get_params().keys()}
+        self.model._set_params(**params_to_set)
+        self.assertEqual(params_to_set, self.model._get_params())
 
 
 class SymmetryParamsTestCase(
@@ -265,7 +265,7 @@ class SymmetryParamsTestCase(
         """Test that the parameters can be retrieved."""
         ipsi_args = list(self.model.ipsi.get_params(as_dict=False))
         contra_args = list(self.model.contra.get_params(as_dict=False))
-        both_args = list(self.model.get_params(as_dict=False))
+        both_args = list(self.model._get_params(as_dict=False))
         self.assertEqual(ipsi_args, both_args)
         self.assertEqual(contra_args, both_args)
 
@@ -273,7 +273,7 @@ class SymmetryParamsTestCase(
         """Test that the parameters can be retrieved."""
         ipsi_dict = self.model.ipsi.get_params()
         contra_dict = self.model.contra.get_params()
-        both_dict = self.model.get_params()
+        both_dict = self.model._get_params()
         self.assertEqual(ipsi_dict, both_dict)
         self.assertEqual(contra_dict, both_dict)
 
@@ -282,13 +282,13 @@ class SymmetryParamsTestCase(
         args_to_set = [
             self.rng.uniform() for _ in self.model.ipsi.get_params(as_dict=False)
         ]
-        self.model.set_params(*args_to_set)
+        self.model._set_params(*args_to_set)
         self.assertEqual(args_to_set, list(self.model.contra.get_params().values()))
 
     def test_set_params_as_dict(self):
         """Test that the parameters can be set via keyword arguments."""
         params_to_set = {k: self.rng.uniform() for k in self.model.contra.get_params()}
-        self.model.set_params(**params_to_set)
+        self.model._set_params(**params_to_set)
         self.assertEqual(params_to_set, self.model.ipsi.get_params())
 
 
@@ -373,7 +373,7 @@ class DataGenerationTestCase(
         super().setUp()
         self.model.replace_all_modalities(MODALITIES)
         self.init_diag_time_dists(early="frozen", late="parametric")
-        self.model.set_params(**self.create_random_params())
+        self.model._set_params(**self.create_random_params())
 
     def test_generate_data(self):
         """Check bilateral data generation."""
@@ -399,7 +399,7 @@ def test_get_params_without_distributions(
     binary_bilateral_model: models.Bilateral,
 ) -> None:
     """Ensure the `get_params()` method works without distributions."""
-    params = binary_bilateral_model.get_params(as_dict=True, as_flat=True)
+    params = binary_bilateral_model._get_params(as_dict=True, as_flat=True)
     assert len(params) == binary_bilateral_model.get_num_dims()
     assert params == binary_bilateral_model.get_named_params()
 

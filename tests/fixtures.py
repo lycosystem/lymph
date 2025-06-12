@@ -171,7 +171,7 @@ class BilateralModelMixin:
         self.graph_dict = get_graph("large")
         self.model = Bilateral(graph_dict=self.graph_dict, **self.model_kwargs)
         self.init_diag_time_dists(early="frozen", late="parametric")
-        self.model.set_params(**self.create_random_params())
+        self.model._set_params(**self.create_random_params())
         self.logger = get_logger(level=logging.INFO)
 
     def init_diag_time_dists(self, **dists) -> None:
@@ -184,7 +184,7 @@ class BilateralModelMixin:
 
     def create_random_params(self) -> dict[str, float]:
         """Create a random set of parameters."""
-        params = self.model.get_params(as_dict=True)
+        params = self.model._get_params(as_dict=True)
 
         for name in params:
             params[name] = self.rng.random()

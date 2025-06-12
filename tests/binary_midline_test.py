@@ -31,8 +31,8 @@ class MidlineSetParamsTestCase(
 
     def test_set_spread_params(self) -> None:
         """Check that the complex parameter assignment works correctly."""
-        params_to_set = {k: self.rng.uniform() for k in self.model.get_params().keys()}
-        self.model.set_params(**params_to_set)
+        params_to_set = {k: self.rng.uniform() for k in self.model._get_params().keys()}
+        self.model._set_params(**params_to_set)
 
         self.assertEqual(
             self.model.central.ipsi.get_tumor_spread_params(),
@@ -59,8 +59,8 @@ class MidlineSetParamsTestCase(
         """Check if the order of getter and setter is the same."""
         num_dims = self.model.get_num_dims()
         params_to_set = np.linspace(0.0, 1.0, num_dims + 1)
-        unused_param = self.model.set_params(*params_to_set)
-        returned_params = list(self.model.get_params(as_dict=False))
+        unused_param = self.model._set_params(*params_to_set)
+        returned_params = list(self.model._get_params(as_dict=False))
 
         self.assertEqual(unused_param, params_to_set[-1])
         self.assertEqual(params_to_set[:-1].tolist(), returned_params)
@@ -70,14 +70,14 @@ class MidlineSetParamsTestCase(
         expected_midext_prob = self.rng.uniform()
         self.model.midext_prob = expected_midext_prob
         self.assertEqual(
-            list(self.model.get_params(as_dict=False))[-1],
+            list(self.model._get_params(as_dict=False))[-1],
             expected_midext_prob,
         )
 
         expected_midext_prob = self.rng.uniform()
         num_dims = self.model.get_num_dims()
         params_to_set = [0.0] * (num_dims - 1) + [expected_midext_prob]
-        self.model.set_params(*params_to_set)
+        self.model._set_params(*params_to_set)
         self.assertEqual(self.model.midext_prob, expected_midext_prob)
 
 
@@ -98,8 +98,8 @@ class MidlineLikelihoodTestCase(
 
     def test_likelihood(self) -> None:
         """Check that the likelihood function works correctly."""
-        params_to_set = {k: self.rng.uniform() for k in self.model.get_params().keys()}
-        self.model.set_params(**params_to_set)
+        params_to_set = {k: self.rng.uniform() for k in self.model._get_params().keys()}
+        self.model._set_params(**params_to_set)
 
         # Check that the likelihood is a number
         self.assertTrue(np.isscalar(self.model.likelihood()))
@@ -122,7 +122,7 @@ class MidlineRiskTestCase(
         super().setUp(graph_size="small")
         self.init_diag_time_dists(early="frozen", late="parametric")
         self.model.set_modality("pathology", spec=1.0, sens=1.0, kind="pathological")
-        self.model.set_params(
+        self.model._set_params(
             midext_prob=0.1,
             ipsi_TtoII_spread=0.35,
             ipsi_TtoIII_spread=0.0,
@@ -201,7 +201,7 @@ class MidlineDrawPatientsTestCase(unittest.TestCase):
 
     def test_draw_patients(self) -> None:
         """Check that the data generation works correctly."""
-        self.model.set_params(
+        self.model._set_params(
             ipsi_TtoA_spread=1.0,
             contra_TtoA_spread=0.0,
             AtoB_spread=1.0,
@@ -243,6 +243,6 @@ def test_no_desync_after_set_params(midline_model: models.Midline) -> None:
     }
 
     with pytest.raises(ValueError):
-        midline_model.set_params(**params_to_set)
+        midline_model._set_params(**params_to_set)
 
-    midline_model.get_params()
+    midline_model._get_params()

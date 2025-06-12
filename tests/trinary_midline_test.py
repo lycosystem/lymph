@@ -42,8 +42,8 @@ class MidlineSetParamsTestCase(unittest.TestCase):
 
     def test_set_spread_params(self) -> None:
         """Check that the complex parameter assignment works correctly."""
-        params_to_set = {k: self.rng.uniform() for k in self.model.get_params().keys()}
-        self.model.set_params(**params_to_set)
+        params_to_set = {k: self.rng.uniform() for k in self.model._get_params().keys()}
+        self.model._set_params(**params_to_set)
 
         self.assertEqual(
             self.model.central.ipsi.get_tumor_spread_params(),

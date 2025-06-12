@@ -140,11 +140,11 @@ def test_set_global_params_for_side(
     binary_bilateral_model: models.Bilateral,
 ) -> None:
     """Check that setting e.g. `"ipsi_spread"` works as global param to ipsi side."""
-    params = binary_bilateral_model.get_params(as_dict=True)
+    params = binary_bilateral_model._get_params(as_dict=True)
     new_params = {param: RNG.uniform() for param in params.keys()}
 
     binary_bilateral_model.named_params = ["ipsi_spread"]
-    binary_bilateral_model.set_params(**new_params)
+    binary_bilateral_model._set_params(**new_params)
     ipsi_spread_val = RNG.uniform()
     binary_bilateral_model.set_named_params(ipsi_spread=ipsi_spread_val)
 
