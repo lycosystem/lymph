@@ -22,9 +22,10 @@ from functools import partial
 from typing import Any, TypeVar
 
 import numpy as np
+from deprecated import deprecated
 
 from lymph import types
-from lymph.utils import flatten, popfirst, unflatten_and_split
+from lymph.utils import popfirst
 
 logger = logging.getLogger(__name__)
 
@@ -279,23 +280,24 @@ class Distribution:
         return rng.choice(a=self.support, p=self.pmf, size=num)
 
 
-DC = TypeVar("DC", bound="Composite")
+DC = TypeVar("DC", bound="DistributionManager")
 
 
-class Composite(ABC):
-    """Abstract base class implementing the composite pattern for distributions.
+class DistributionManager(ABC):
+    """Mixin that allows managing distributions over diagnosis times.
 
+    This is an abstract base class implementing the composite pattern for distributions.
     Any class inheriting from this class should be able to handle the definition of
     distributions over diagnosis times.
 
-    >>> class MyComposite(Composite):
+    >>> class MyDistManager(DistributionManager):
     ...     pass
-    >>> leaf1 = MyComposite(is_distribution_leaf=True, max_time=1)
-    >>> leaf2 = MyComposite(is_distribution_leaf=True, max_time=1)
-    >>> leaf3 = MyComposite(is_distribution_leaf=True, max_time=1)
-    >>> branch1 = MyComposite(distribution_children={"L1": leaf1, "L2": leaf2})
-    >>> branch2 = MyComposite(distribution_children={"L3": leaf3})
-    >>> root = MyComposite(distribution_children={"B1": branch1, "B2": branch2})
+    >>> leaf1 = MyDistManager(is_distribution_leaf=True, max_time=1)
+    >>> leaf2 = MyDistManager(is_distribution_leaf=True, max_time=1)
+    >>> leaf3 = MyDistManager(is_distribution_leaf=True, max_time=1)
+    >>> branch1 = MyDistManager(distribution_children={"L1": leaf1, "L2": leaf2})
+    >>> branch2 = MyDistManager(distribution_children={"L3": leaf3})
+    >>> root = MyDistManager(distribution_children={"B1": branch1, "B2": branch2})
     >>> root.set_distribution("T1", Distribution([0.1, 0.9]))
     >>> root.get_distribution("T1")
     Distribution([0.1, 0.9])
@@ -303,31 +305,34 @@ class Composite(ABC):
     Distribution([0.1, 0.9])
     """
 
+    # Note: We use name mangling in this class, to avoid clashes with
+    # attributes of the `ParamsManager` and `ModalityManager` mixins.
+
     _max_time: int
     _distributions: dict[str, Distribution]  # only for leaf nodes
-    _distribution_children: dict[str, Composite]
+    __children: dict[str, DistributionManager]
 
     def __init__(
         self: DC,
         max_time: int | None = None,
-        distribution_children: dict[str, Composite] | None = None,
-        is_distribution_leaf: bool = False,
+        children: dict[str, DistributionManager] | None = None,
+        is_leaf: bool = False,
     ) -> None:
         """Initialize the distribution composite."""
-        if distribution_children is None:
-            distribution_children = {}
+        if children is None:
+            children = {}
 
-        if is_distribution_leaf:
+        if is_leaf:
             self._distributions = {}
-            self._distribution_children = {}  # ignore any provided children
+            self.__children = {}  # ignore any provided children
             self.max_time = max_time  # only set max_time in leaf
 
-        self._distribution_children = distribution_children
+        self.__children = children
 
     @property
-    def _is_distribution_leaf(self: DC) -> bool:
+    def __is_leaf(self: DC) -> bool:
         """Return whether the object is a leaf node w.r.t. distributions."""
-        if len(self._distribution_children) > 0:
+        if len(self.__children) > 0:
             return False
 
         if not hasattr(self, "_distributions"):
@@ -338,7 +343,7 @@ class Composite(ABC):
     @property
     def max_time(self: DC) -> int:
         """Return the maximum time for the distributions."""
-        if self._is_distribution_leaf:
+        if self.__is_leaf:
             are_all_equal = True
             for dist in self._distributions.values():
                 are_equal = dist.max_time == self._max_time
@@ -353,7 +358,7 @@ class Composite(ABC):
 
             return self._max_time
 
-        max_times = [child.max_time for child in self._distribution_children.values()]
+        max_times = [child.max_time for child in self.__children.values()]
         if len(set(max_times)) > 1:
             warnings.warn("Not all max_times are equal. Returning the first one.")
 
@@ -362,7 +367,7 @@ class Composite(ABC):
     @max_time.setter
     def max_time(self: DC, value: int) -> None:
         """Set the maximum time for the distributions."""
-        if self._is_distribution_leaf:
+        if self.__is_leaf:
             if value is None:
                 raise ValueError("max_time must be provided if the composite is a leaf")
 
@@ -374,7 +379,7 @@ class Composite(ABC):
                 dist.max_time = value
 
         else:
-            for child in self._distribution_children.values():
+            for child in self.__children.values():
                 child.max_time = value
 
     @property
@@ -395,15 +400,15 @@ class Composite(ABC):
         returned dictionary of this method. Instead, use the
         :py:meth:`.set_distribution` method.
         """
-        if self._is_distribution_leaf:
+        if self.__is_leaf:
             return self._distributions
 
-        child_keys = list(self._distribution_children.keys())
-        first_child = self._distribution_children[child_keys[0]]
+        child_keys = list(self.__children.keys())
+        first_child = self.__children[child_keys[0]]
         first_distributions = first_child.get_all_distributions()
         are_all_equal = True
         for key in child_keys[1:]:
-            other_child = self._distribution_children[key]
+            other_child = self.__children[key]
             are_all_equal &= first_distributions == other_child.get_all_distributions()
 
         if not are_all_equal:
@@ -417,113 +422,77 @@ class Composite(ABC):
         distribution: Distribution | Iterable[float] | callable,
     ) -> None:
         """Set/update the distribution for the given ``t_stage``."""
-        if self._is_distribution_leaf:
+        if self.__is_leaf:
             self._distributions[t_stage] = Distribution(distribution, self.max_time)
 
         else:
-            for child in self._distribution_children.values():
+            for child in self.__children.values():
                 child.set_distribution(t_stage, distribution)
 
     def del_distribution(self: DC, t_stage: str) -> None:
         """Delete the distribution for the given ``t_stage``."""
-        if self._is_distribution_leaf:
+        if self.__is_leaf:
             del self._distributions[t_stage]
 
         else:
-            for child in self._distribution_children.values():
+            for child in self.__children.values():
                 child.del_distribution(t_stage)
-
-    def replace_all_distributions(
-        self: DC,
-        distributions: dict[str, Distribution],
-    ) -> None:
-        """Replace all distributions with the given ones."""
-        if self._is_distribution_leaf:
-            self._distributions = {}
-            for t_stage, distribution in distributions.items():
-                self.set_distribution(t_stage, distribution)
-
-        else:
-            for child in self._distribution_children.values():
-                child.replace_all_distributions(distributions)
 
     def clear_distributions(self: DC) -> None:
         """Remove all distributions."""
-        if self._is_distribution_leaf:
+        if self.__is_leaf:
             self._distributions.clear()
 
         else:
-            for child in self._distribution_children.values():
+            for child in self.__children.values():
                 child.clear_distributions()
 
-    def distributions_hash(self: DC) -> int:
+    def _distributions_hash(self: DC) -> int:
         """Return a hash of all distributions."""
         hash_res = 0
-        if self._is_distribution_leaf:
+        if self.__is_leaf:
             for t_stage, distribution in self._distributions.items():
                 hash_res = hash((hash_res, t_stage, hash(distribution)))
 
         else:
-            for child in self._distribution_children.values():
-                hash_res = hash((hash_res, child.distributions_hash()))
+            for child in self.__children.values():
+                hash_res = hash((hash_res, child._distributions_hash()))
 
         return hash_res
 
     def get_distribution_params(
         self: DC,
-        as_dict: bool = True,
-        as_flat: bool = True,
-    ) -> types.ParamsType:
+        as_flat=None,
+        as_dict=None,
+    ) -> dict[str, float]:
         """Return the parameters of all distributions."""
         params = {}
+        distributions = self.get_all_distributions()
 
-        if self._is_distribution_leaf:
-            for t_stage, distribution in self._distributions.items():
-                if not distribution.is_updateable:
-                    continue
-                params[t_stage] = distribution.get_params(as_flat=as_flat)
-        else:
-            child_keys = list(self._distribution_children.keys())
-            first_child = self._distribution_children[child_keys[0]]
-            params = first_child.get_distribution_params(as_flat=as_flat)
-            are_all_equal = True
-            for key in child_keys[1:]:
-                other_child = self._distribution_children[key]
-                other_params = other_child.get_distribution_params(as_flat=as_flat)
-                are_all_equal &= params == other_params
+        for t_stage, dist in distributions.items():
+            if not dist.is_updateable:
+                continue
+            dist_params = dist.get_params()
+            for param_name, param_value in dist_params.items():
+                full_param_name = f"{t_stage}_{param_name}"
+                params[full_param_name] = param_value
 
-        if as_flat or not as_dict:
-            params = flatten(params)
+        return params
 
-        return params if as_dict else params.values()
-
-    def set_distribution_params(
-        self: DC,
-        *args: float,
-        **kwargs: float,
-    ) -> tuple[float]:
+    def set_distribution_params(self: DC, *args: float, **kwargs: float) -> None:
         """Set the parameters of all distributions."""
-        if self._is_distribution_leaf:
-            kwargs, global_kwargs = unflatten_and_split(
-                kwargs,
-                expected_keys=self._distributions.keys(),
-            )
-            for t_stage, distribution in self._distributions.items():
-                if not distribution.is_updateable:
-                    continue
-                t_stage_kwargs = global_kwargs.copy()
-                t_stage_kwargs.update(kwargs.get(t_stage, {}))
-                args = distribution.set_params(*args, **t_stage_kwargs)
-            # in leafs, use up args one by one
-            return args
+        new_params = dict(zip(self.get_distribution_params(), args, strict=False))
+        new_params.update(kwargs)
+        distributions = self.get_all_distributions()
 
-        kwargs, global_kwargs = unflatten_and_split(
-            kwargs,
-            expected_keys=self._distribution_children.keys(),
-        )
-        for key, child in self._distribution_children.items():
-            child_kwargs = global_kwargs.copy()
-            child_kwargs.update(kwargs.get(key, {}))
-            rem_args = child.set_distribution_params(*args, **child_kwargs)
-        # in branches, distribute all args to children
-        return rem_args
+        for param_name, param_value in new_params.items():
+            start, _, rest = param_name.partition("_")
+
+            if start in distributions and distributions[start].is_updateable:
+                dist = distributions[start]
+                dist.set_params(**{rest: param_value})
+
+
+@deprecated(reason="Use DistributionManager instead.", version="1.4.0")
+class Composite(DistributionManager):
+    """Deprecated alias for DistributionManager."""
