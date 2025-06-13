@@ -30,7 +30,7 @@ dynamic = ["version"]
 
 [project.optional-dependencies]
 test = ["pytest", "scipy", "coverage", "emcee"]
-dev = ["pre-commit"]
+dev = ["pre-commit", "git-cliff"]
 docs = [
     "sphinx",
     "sphinx-book-theme",
