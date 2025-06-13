@@ -220,7 +220,7 @@ class MidlineDrawPatientsTestCase(unittest.TestCase):
 @pytest.fixture
 def midline_model() -> models.Midline:
     """Fixture to create a midline model for testing."""
-    graph_dict = fixtures.get_graph_dict("medium")
+    graph_dict = fixtures.get_graph("medium")
     return models.Midline.binary(graph_dict=graph_dict, use_midext_evo=False)
 
 
@@ -245,5 +245,4 @@ def test_no_desync_after_set_params(midline_model: models.Midline) -> None:
     with pytest.raises(ValueError):
         midline_model.set_params(**params_to_set)
 
-    with not pytest.raises(ValueError):
-        midline_model.get_params()
+    midline_model.get_params()
