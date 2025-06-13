@@ -457,3 +457,25 @@ def add_or_mult(llh: float, arr: np.ndarray, log: bool = True) -> float:
     if log:
         return llh + np.sum(np.log(arr))
     return llh * np.prod(arr)
+
+
+def zip_with_remainder(
+    first: Sequence[Any],
+    second: Sequence[Any],
+) -> tuple[Sequence[tuple[Any, Any]], Sequence[Any]]:
+    """Zip two sequences, returning the remainder of the first, if it's longer.
+
+    >>> zipped, remainder = zip_with_remainder([1, 2, 3], ['a', 'b'])
+    >>> print(list(zipped))
+    [(1, 'a'), (2, 'b')]
+    >>> print(remainder)
+    [3]
+    >>> zipped, remainder = zip_with_remainder(['a', 'b'], [1, 2, 3])
+    >>> print(list(zipped))
+    [('a', 1), ('b', 2)]
+    >>> print(remainder)
+    []
+    """
+    min_len = min(len(first), len(second))
+    zipped = zip(first, second, strict=False)
+    return zipped, first[min_len:]

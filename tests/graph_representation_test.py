@@ -31,7 +31,7 @@ class ConstructBinaryGraphRepresentationTestCase(unittest.TestCase):
             ("lnl", "III"): [],
         }
         self.graph_dict = large_graph
-        self.graph_repr = graph.Representation(
+        self.graph_repr = graph.GraphRepresentation(
             graph_dict=self.graph_dict,
             allowed_states=[0, 1],
         )
