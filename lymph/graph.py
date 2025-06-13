@@ -470,7 +470,7 @@ class Edge:
         )
 
 
-class Representation:
+class GraphRepresentation:
     """Class holding the graph structure of the model.
 
     This class allows accessing the connected nodes (:py:class:`Tumor` and
@@ -828,3 +828,48 @@ class Representation:
          'IItoIII_spread': 0.4}
         """
         return set_params_for(self.edges, *args, **kwargs)
+
+
+class GraphManager:
+    """Mixin that allows retrieving and interacting with the graph in nested models."""
+
+    __children: dict[str, GraphManager | GraphRepresentation]
+
+    def __init__(
+        self,
+        child_attrs: list[str] | None = None,
+    ) -> None:
+        """Initialize the graph manager with a dictionary of children."""
+        if child_attrs is None:
+            child_attrs = []
+
+        self.__children = {attr: getattr(self, attr) for attr in child_attrs}
+
+    @property
+    def __is_leaf(self) -> bool:
+        """Check if the current instance is a leaf node in the graph."""
+        return isinstance(getattr(self, "graph", None), GraphRepresentation)
+
+    def get_graph(self) -> GraphRepresentation:
+        """Return the graph representation of a (possibly nested) model."""
+        if self.__is_leaf:
+            return self.graph
+
+        graphs_set = set()
+        for child in self.__children.values():
+            graphs_set = graphs_set.union(child.get_graph())
+
+        if len(graphs_set) != 1:
+            warnings.warn(f"{len(graphs_set)} different graphs found.")
+
+        return next(iter(graphs_set))
+
+    @property
+    def is_binary(self) -> bool:
+        """Return whether the model is binary."""
+        return self.get_graph().is_binary
+
+    @property
+    def is_trinary(self) -> bool:
+        """Return whether the model is trinary."""
+        return self.get_graph().is_trinary
