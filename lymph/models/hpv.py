@@ -13,6 +13,7 @@ import pandas as pd
 
 from lymph import models, types, utils
 from lymph.diagnosis_times import DistributionManager
+from lymph.graph import GraphManager
 from lymph.modalities import ModalityManager
 from lymph.params import ParamsManager
 
@@ -35,6 +36,7 @@ def select_hpv_model(method):
 
 
 class HPVUnilateral(
+    GraphManager,
     ParamsManager,
     DistributionManager,
     ModalityManager,
@@ -81,11 +83,12 @@ class HPVUnilateral(
             hpv_kwargs=hpv_kwargs,
             nohpv_kwargs=nohpv_kwargs,
         )
-        children = {"hpv": self.hpv, "nohpv": self.nohpv}
+        children = ["hpv", "nohpv"]
 
-        ParamsManager.__init__(self, children=children)
-        DistributionManager.__init__(self, children=children, is_leaf=False)
-        ModalityManager.__init__(self, children=children, is_leaf=False)
+        GraphManager.__init__(self, child_attrs=children)
+        ParamsManager.__init__(self, child_attrs=children)
+        DistributionManager.__init__(self, child_attrs=children, is_leaf=False)
+        ModalityManager.__init__(self, child_attrs=children, is_leaf=False)
 
         if named_params is not None:
             self.named_params = named_params
@@ -112,7 +115,7 @@ class HPVUnilateral(
         self.nohpv = models.Unilateral(**_nohpv_kwargs)
 
         # set b_2 key name
-        self.base_2_key = list(self.hpv.graph.tumors.keys())[0] + "toII"
+        self.base_2_key = list(self.get_graph().tumors.keys())[0] + "toII"
 
     @classmethod
     def binary(cls, *args, **kwargs) -> HPVUnilateral:
@@ -137,22 +140,6 @@ class HPVUnilateral(
         uni_kwargs = kwargs.pop("uni_kwargs", {})
         uni_kwargs["allowed_states"] = [0, 1, 2]
         return cls(*args, uni_kwargs=uni_kwargs, **kwargs)
-
-    @property
-    def is_trinary(self) -> bool:
-        """Return whether the model is trinary."""
-        if self.hpv.is_trinary != self.nohpv.is_trinary:
-            raise ValueError("Both models must be of the same 'narity'.")
-
-        return self.hpv.is_trinary
-
-    @property
-    def is_binary(self) -> bool:
-        """Return whether the model is binary."""
-        if self.hpv.is_binary != self.nohpv.is_binary:
-            raise ValueError("Both sides must be of the same 'narity'.")
-
-        return self.nohpv.is_binary
 
     def get_tumor_spread_params(
         self,
@@ -254,8 +241,8 @@ class HPVUnilateral(
         args = self.hpv.set_tumor_spread_params(*args, **hpv_kwargs)
         args = self.nohpv.set_tumor_spread_params(*args, **nohpv_kwargs)
         utils.synchronize_params(  # might be redundant check later
-            get_from=self.hpv.graph.lnl_edges,
-            set_to=self.nohpv.graph.lnl_edges,
+            get_from=self.hpv.get_graph().lnl_edges,
+            set_to=self.nohpv.get_graph().lnl_edges,
         )
 
         return args

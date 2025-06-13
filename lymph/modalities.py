@@ -13,7 +13,6 @@ from abc import ABC, abstractmethod
 from typing import Literal, TypeVar
 
 import numpy as np
-from deprecated import deprecated
 
 
 class Modality:
@@ -179,18 +178,18 @@ class ModalityManager(ABC):
 
     def __init__(
         self: MC,
-        children: dict[str, ModalityManager] = None,
+        child_attrs: list[str] | None = None,
         is_leaf: bool = False,
     ) -> None:
         """Initialize the modality composite."""
-        if children is None:
-            children = {}
+        if child_attrs is None:
+            child_attrs = []
 
         if is_leaf:
             self._modalities = {}
-            children = {}  # ignore any provided children
+            child_attrs = []  # ignore any provided children
 
-        self.__children = children
+        self.__children = {attr: getattr(self, attr) for attr in child_attrs}
 
     @property
     def __is_leaf(self: MC) -> bool:
@@ -299,8 +298,3 @@ class ModalityManager(ABC):
         else:
             for child in self.__children.values():
                 child.clear_modalities()
-
-
-@deprecated(reason="Use ModalityManager instead.", version="1.4.0")
-class Composite(ModalityManager):
-    """Deprecated alias for ModalityManager."""

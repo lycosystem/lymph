@@ -19,13 +19,12 @@ import warnings
 from abc import ABC
 from collections.abc import Iterable
 from functools import partial
-from typing import Any, TypeVar
+from typing import Any
 
 import numpy as np
-from deprecated import deprecated
 
 from lymph import types
-from lymph.utils import popfirst
+from lymph.utils import popfirst, zip_with_remainder
 
 logger = logging.getLogger(__name__)
 
@@ -280,9 +279,6 @@ class Distribution:
         return rng.choice(a=self.support, p=self.pmf, size=num)
 
 
-DC = TypeVar("DC", bound="DistributionManager")
-
-
 class DistributionManager(ABC):
     """Mixin that allows managing distributions over diagnosis times.
 
@@ -313,24 +309,24 @@ class DistributionManager(ABC):
     __children: dict[str, DistributionManager]
 
     def __init__(
-        self: DC,
+        self,
         max_time: int | None = None,
-        children: dict[str, DistributionManager] | None = None,
+        child_attrs: list[str] | None = None,
         is_leaf: bool = False,
     ) -> None:
         """Initialize the distribution composite."""
-        if children is None:
-            children = {}
+        if child_attrs is None:
+            child_attrs = []
 
         if is_leaf:
             self._distributions = {}
             self.__children = {}  # ignore any provided children
             self.max_time = max_time  # only set max_time in leaf
 
-        self.__children = children
+        self.__children = {attr: getattr(self, attr) for attr in child_attrs}
 
     @property
-    def __is_leaf(self: DC) -> bool:
+    def __is_leaf(self) -> bool:
         """Return whether the object is a leaf node w.r.t. distributions."""
         if len(self.__children) > 0:
             return False
@@ -341,7 +337,7 @@ class DistributionManager(ABC):
         return True
 
     @property
-    def max_time(self: DC) -> int:
+    def max_time(self) -> int:
         """Return the maximum time for the distributions."""
         if self.__is_leaf:
             are_all_equal = True
@@ -365,7 +361,7 @@ class DistributionManager(ABC):
         return max_times[0]
 
     @max_time.setter
-    def max_time(self: DC, value: int) -> None:
+    def max_time(self, value: int) -> None:
         """Set the maximum time for the distributions."""
         if self.__is_leaf:
             if value is None:
@@ -383,15 +379,15 @@ class DistributionManager(ABC):
                 child.max_time = value
 
     @property
-    def t_stages(self: DC) -> list[str]:
+    def t_stages(self) -> list[str]:
         """Return the T-stages for which distributions are defined."""
         return list(self.get_all_distributions().keys())
 
-    def get_distribution(self: DC, t_stage: str) -> Distribution:
+    def get_distribution(self, t_stage: str) -> Distribution:
         """Return the distribution for the given ``t_stage``."""
         return self.get_all_distributions()[t_stage]
 
-    def get_all_distributions(self: DC) -> dict[str, Distribution]:
+    def get_all_distributions(self) -> dict[str, Distribution]:
         """Return all distributions.
 
         This will issue a warning if it finds that not all distributions of the
@@ -417,7 +413,7 @@ class DistributionManager(ABC):
         return first_distributions
 
     def set_distribution(
-        self: DC,
+        self,
         t_stage: str,
         distribution: Distribution | Iterable[float] | callable,
     ) -> None:
@@ -429,7 +425,7 @@ class DistributionManager(ABC):
             for child in self.__children.values():
                 child.set_distribution(t_stage, distribution)
 
-    def del_distribution(self: DC, t_stage: str) -> None:
+    def del_distribution(self, t_stage: str) -> None:
         """Delete the distribution for the given ``t_stage``."""
         if self.__is_leaf:
             del self._distributions[t_stage]
@@ -438,7 +434,7 @@ class DistributionManager(ABC):
             for child in self.__children.values():
                 child.del_distribution(t_stage)
 
-    def clear_distributions(self: DC) -> None:
+    def clear_distributions(self) -> None:
         """Remove all distributions."""
         if self.__is_leaf:
             self._distributions.clear()
@@ -447,7 +443,7 @@ class DistributionManager(ABC):
             for child in self.__children.values():
                 child.clear_distributions()
 
-    def _distributions_hash(self: DC) -> int:
+    def _distributions_hash(self) -> int:
         """Return a hash of all distributions."""
         hash_res = 0
         if self.__is_leaf:
@@ -461,7 +457,7 @@ class DistributionManager(ABC):
         return hash_res
 
     def get_distribution_params(
-        self: DC,
+        self,
         as_flat=None,
         as_dict=None,
     ) -> dict[str, float]:
@@ -479,9 +475,14 @@ class DistributionManager(ABC):
 
         return params
 
-    def set_distribution_params(self: DC, *args: float, **kwargs: float) -> None:
+    def set_distribution_params(
+        self,
+        *args: float,
+        **kwargs: float,
+    ) -> tuple[float, ...]:
         """Set the parameters of all distributions."""
-        new_params = dict(zip(self.get_distribution_params(), args, strict=False))
+        names_and_vals, args = zip_with_remainder(self.get_distribution_params(), args)
+        new_params = dict(names_and_vals)
         new_params.update(kwargs)
         distributions = self.get_all_distributions()
 
@@ -492,7 +493,4 @@ class DistributionManager(ABC):
                 dist = distributions[start]
                 dist.set_params(**{rest: param_value})
 
-
-@deprecated(reason="Use DistributionManager instead.", version="1.4.0")
-class Composite(DistributionManager):
-    """Deprecated alias for DistributionManager."""
+        return args

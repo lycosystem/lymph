@@ -12,6 +12,7 @@ import pandas as pd
 
 from lymph import matrix, models, types, utils
 from lymph.diagnosis_times import DistributionManager
+from lymph.graph import GraphManager, GraphRepresentation
 from lymph.modalities import ModalityManager
 from lymph.params import ParamsManager
 
@@ -20,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 class Bilateral(
+    GraphManager,
     ParamsManager,
     DistributionManager,
     ModalityManager,
@@ -85,11 +87,12 @@ class Bilateral(
         is_symmetric["tumor_spread"] = is_symmetric.get("tumor_spread", False)
         is_symmetric["lnl_spread"] = is_symmetric.get("lnl_spread", True)
         self.is_symmetric = is_symmetric
-        children = {"ipsi": self.ipsi, "contra": self.contra}
+        child_attrs = ["ipsi", "contra"]
 
-        ParamsManager.__init__(self, children=children)
-        DistributionManager.__init__(self, children=children, is_leaf=False)
-        ModalityManager.__init__(self, children=children, is_leaf=False)
+        GraphManager.__init__(self, child_attrs=child_attrs)
+        ParamsManager.__init__(self, child_attrs=child_attrs)
+        DistributionManager.__init__(self, child_attrs=child_attrs, is_leaf=False)
+        ModalityManager.__init__(self, child_attrs=child_attrs, is_leaf=False)
 
         if named_params is not None:
             self.named_params = named_params
@@ -139,22 +142,6 @@ class Bilateral(
         uni_kwargs = kwargs.pop("uni_kwargs", {})
         uni_kwargs["allowed_states"] = [0, 1, 2]
         return cls(*args, uni_kwargs=uni_kwargs, **kwargs)
-
-    @property
-    def is_trinary(self) -> bool:
-        """Return whether the model is trinary."""
-        if self.ipsi.is_trinary != self.contra.is_trinary:
-            raise ValueError("Both sides must be of the same 'narity'.")
-
-        return self.ipsi.is_trinary
-
-    @property
-    def is_binary(self) -> bool:
-        """Return whether the model is binary."""
-        if self.ipsi.is_binary != self.contra.is_binary:
-            raise ValueError("Both sides must be of the same 'narity'.")
-
-        return self.ipsi.is_binary
 
     def _get_params(self) -> dict[str, float]:
         """Return the parameters of the model.
@@ -448,7 +435,7 @@ class Bilateral(
 
         marginalize_over_states = {}
         for side in ["ipsi", "contra"]:
-            side_graph = getattr(self, side).graph
+            side_graph: GraphRepresentation = getattr(self, side).get_graph()
             marginalize_over_states[side] = matrix.compute_encoding(
                 lnls=side_graph.lnls.keys(),
                 pattern=involvement.get(side, {}),
@@ -535,7 +522,7 @@ class Bilateral(
         # concatenation of the two separate drawn diagnosis
         sides = ["ipsi", "contra"]
         modality_names = list(self.get_all_modalities().keys())
-        lnl_names = list(self.ipsi.graph.lnls.keys())
+        lnl_names = list(self.get_graph().lnls.keys())
         multi_cols = pd.MultiIndex.from_product([sides, modality_names, lnl_names])
 
         # reorder the column levels and thus also the individual columns to match the

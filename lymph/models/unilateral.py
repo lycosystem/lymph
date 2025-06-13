@@ -11,7 +11,11 @@ import numpy as np
 import pandas as pd
 from cachetools import LRUCache
 
-from lymph import diagnosis_times, graph, matrix, modalities, types, utils
+from lymph import matrix, types, utils
+from lymph.diagnosis_times import DistributionManager
+from lymph.graph import GraphManager, GraphRepresentation
+from lymph.modalities import ModalityManager
+from lymph.params import ParamsManager
 from lymph.utils import (
     add_or_mult,
     dict_to_func,  # noqa: F401
@@ -30,8 +34,10 @@ RAW_T_COL = ("tumor", "1", "t_stage")
 
 
 class Unilateral(
-    diagnosis_times.DistributionManager,
-    modalities.ModalityManager,
+    GraphManager,
+    ParamsManager,
+    DistributionManager,
+    ModalityManager,
     types.Model,
 ):
     """Class that models metastatic progression in a unilateral lymphatic system.
@@ -91,17 +97,15 @@ class Unilateral(
         no effect.
 
         """
-        self.graph = graph.Representation(
+        self.graph = GraphRepresentation(
             graph_dict=graph_dict,
             tumor_state=tumor_state,
             allowed_states=allowed_states,
         )
-        diagnosis_times.DistributionManager.__init__(
-            self,
-            max_time=max_time,
-            is_leaf=True,
-        )
-        modalities.ModalityManager.__init__(self, is_leaf=True)
+        GraphManager.__init__(self)
+        ParamsManager.__init__(self, child_attrs=["graph"])
+        DistributionManager.__init__(self, max_time=max_time, is_leaf=True)
+        ModalityManager.__init__(self, is_leaf=True)
 
         self._patient_data: pd.DataFrame | None = None
         self._cache_version: int = 0
@@ -137,16 +141,6 @@ class Unilateral(
             f"Unilateral with {len(self.graph.tumors)} tumors "
             f"and {len(self.graph.lnls)} LNLs"
         )
-
-    @property
-    def is_trinary(self) -> bool:
-        """Return whether the model is trinary."""
-        return self.graph.is_trinary
-
-    @property
-    def is_binary(self) -> bool:
-        """Return whether the model is binary."""
-        return self.graph.is_binary
 
     def get_t_stages(
         self,
@@ -213,20 +207,16 @@ class Unilateral(
         self,
         as_dict: bool = True,
         as_flat: bool = True,
-    ) -> types.ParamsType:
+    ) -> dict[str, float]:
         """Get the parameters of the model.
 
         If ``as_dict`` is ``True``, the parameters are returned as a dictionary. If
         ``as_flat`` is ``True``, the dictionary is flattened, i.e., all nested
         dictionaries are merged into one, using :py:func:`~lymph.helper.flatten`.
         """
-        params = self.get_spread_params(as_flat=as_flat)
-        params.update(self.get_distribution_params(as_flat=as_flat))
-
-        if as_flat or not as_dict:
-            params = flatten(params)
-
-        return params if as_dict else params.values()
+        params = self._get_params()
+        params.update(self.get_distribution_params())
+        return params
 
     def set_tumor_spread_params(self, *args: float, **kwargs: float) -> tuple[float]:
         """Assign new parameters to the tumor spread edges."""
@@ -283,7 +273,7 @@ class Unilateral(
          'IItoIII_micro': 0.5,
          'III_growth': 0.123}
         """
-        args = self.set_spread_params(*args, **kwargs)
+        args = self._set_params(*args, **kwargs)
         return self.set_distribution_params(*args, **kwargs)
 
     def transition_prob(self, new_state: list[int], assign: bool = False) -> float:

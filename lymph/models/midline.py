@@ -12,6 +12,7 @@ import pandas as pd
 
 from lymph import matrix, models, types, utils
 from lymph.diagnosis_times import DistributionManager
+from lymph.graph import GraphManager
 from lymph.modalities import ModalityManager
 from lymph.params import ParamsManager
 
@@ -24,6 +25,7 @@ CENTRAL_COL = ("tumor", "1", "central")
 
 
 class Midline(
+    GraphManager,
     ParamsManager,
     DistributionManager,
     ModalityManager,
@@ -130,7 +132,7 @@ class Midline(
                 # Actually, this shouldn't be too hard, but we still need to think
                 # about it for a bit.
             )
-        children = {"ext": self.ext, "noext": self.noext}
+        child_attrs = ["ext", "noext"]
         if use_central:
             self._central = models.Bilateral(
                 graph_dict=graph_dict,
@@ -140,7 +142,7 @@ class Midline(
                     "lnl_spread": self.is_symmetric["lnl_spread"],
                 },
             )
-            children["central"] = self.central
+            child_attrs.append("central")
 
         if marginalize_unknown:
             self._unknown = models.Bilateral(
@@ -148,16 +150,17 @@ class Midline(
                 uni_kwargs=uni_kwargs,
                 is_symmetric=self.is_symmetric,
             )
-            children["unknown"] = self.unknown
+            child_attrs.append("unknown")
 
         if use_mixing:
             self.mixing_param = 0.5
 
         self.midext_prob = 0.5
 
-        ParamsManager.__init__(self, children=children)
-        DistributionManager.__init__(self, children=children, is_leaf=False)
-        ModalityManager.__init__(self, children=children, is_leaf=False)
+        GraphManager.__init__(self, child_attrs=child_attrs)
+        ParamsManager.__init__(self, child_attrs=child_attrs)
+        DistributionManager.__init__(self, child_attrs=child_attrs, is_leaf=False)
+        ModalityManager.__init__(self, child_attrs=child_attrs, is_leaf=False)
 
         if named_params is not None:
             self.named_params = named_params
@@ -175,17 +178,6 @@ class Midline(
         uni_kwargs = kwargs.pop("uni_kwargs", {})
         uni_kwargs["allowed_states"] = [0, 1, 2]
         return cls(*args, uni_kwargs=uni_kwargs, **kwargs)
-
-    @property
-    def is_trinary(self) -> bool:
-        """Return whether the model is trinary."""
-        if self.ext.is_trinary != self.noext.is_trinary:
-            raise ValueError("The bilateral models must have the same trinary status.")
-
-        if self.use_central and self.central.is_trinary != self.ext.is_trinary:
-            raise ValueError("The bilateral models must have the same trinary status.")
-
-        return self.ext.is_trinary
 
     @property
     def midext_prob(self) -> float:
@@ -759,7 +751,7 @@ class Midline(
         # concatenation of the two separate drawn diagnosis
         sides = ["ipsi", "contra"]
         modality_names = list(self.get_all_modalities().keys())
-        lnl_names = list(self.ext.ipsi.graph.lnls.keys())
+        lnl_names = list(self.get_graph().lnls.keys())
         multi_cols = pd.MultiIndex.from_product([sides, modality_names, lnl_names])
 
         # reorder the column levels and thus also the individual columns to match the
