@@ -25,7 +25,7 @@ classifiers = [
     "Topic :: Scientific/Engineering",
     "Topic :: Software Development :: Libraries",
 ]
-dependencies = ["numpy", "pandas", "cachetools", "deprecated"]
+dependencies = ["numpy", "pandas", "cachetools"]
 dynamic = ["version"]
 
 [project.optional-dependencies]
