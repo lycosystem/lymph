@@ -4,11 +4,9 @@ First, thanks for considering to help out on this project!
 
 Before you start coding away and fixing some of the [:link:issues], let me give you an introduction of the standards and best-practices that we have tried to follow so far:
 
-
 ## Git
 
 We use [:link:git] as source control manager and [:link:GitHub] as the repository hosting service.
-
 
 ### Branching Model
 
@@ -44,7 +42,6 @@ So, we have a `main` branch where every tagged release lives. Then there's a `de
 
 This branching model is sometimes called [:link:git-flow] and it is worth reading through the original article for a clearer understanding of how and why this works.
 
-
 ### Semantic Versioning
 
 For version numbers, we use [:link:SemVer]. Generally, under this standard, any version number follows the scheme
@@ -63,7 +60,6 @@ And as soon as any so-called "breaking change" occurs that is incompatible with 
 
 There is one exception: As ong as the `MAJOR` version is 0 (meaning this is still in its initial development), breaking changes may also "just" increment the `MINOR` version.
 
-
 ### Commit Messages
 
 Since not so long ago, we use [:link:conventional commits] in this repository. This is a standard, defining how commit messages should be written. It is worth the time to read the quick introduction on their website. Using it makes it easier to auto-update a draft of the `CHANGELOG.md`.
@@ -77,7 +73,6 @@ pre-commit install --hook-type commit-msg
 
 make sure this happens inside the virtual environment you have set up.
 
-
 ## Documentation
 
 Right now, we use [:link:sphinx] to compile a documentation from the docstrings of the code and host it on [:link:readthedocs].
@@ -85,7 +80,6 @@ Right now, we use [:link:sphinx] to compile a documentation from the docstrings 
 However, I like the simplistic style of [:link:pdoc] a lot more that [:link:sphinx], which can be convoluted. So, I would like to switch to [:link:pdoc] at some point in the foreseeable future.
 
 What I like about [:link:pdoc] is that for the documentation to turn out well and useful, the code is necessarily well documented. It should be easy to understand and well described even when only reading the source code.
-
 
 ### Docstrings
 
@@ -121,20 +115,17 @@ def my_well_named_function(
     # here comes the code
 ```
 
-
 ## Tests
 
 For simple functions and methods, I really like writing short and illustrative examples that can be used by [:link:doctest] to test some basic functionality.
 
 For more complicated stuff, we used [:link:pytest] and [:link:hypothesis] to cover a broad range of input values and edge cases. For the core components, this is important and ideally, with every new version of the package released, the portion of the code covered in tests goes up.
 
-
 ## Questions?
 
 If there is still something unclear, feel free to reach out to me: [roman.ludwig@usz.ch](mailto:roman.ludwig@usz.ch).
 
-
-[:link:issues]: https://github.com/rmnldwg/lymph/issues
+[:link:issues]: https://github.com/lycosystem/lymph/issues
 [:link:git]: https://git-scm.com
 [:link:GitHub]: https://github.com
 [:link:git-flow]: https://nvie.com/posts/a-successful-git-branching-model/

@@ -1,4 +1,4 @@
-name: Build and release Python package on TestPyPI
+name: Test Build
 
 on:
   push:

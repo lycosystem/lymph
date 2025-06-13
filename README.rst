@@ -1,17 +1,17 @@
-.. image:: https://raw.githubusercontent.com/rmnldwg/lymph/main/docs/source/_static/github-social-card.png
+.. image:: https://raw.githubusercontent.com/lycosystem/lymph/main/github-social-card.png
 
 .. image:: https://img.shields.io/badge/license-MIT-blue.svg?style=flat
-    :target: https://github.com/rmnldwg/lymph/blob/main/LICENSE
-.. image:: https://img.shields.io/badge/GitHub-rmnldwg%2Flymph-blue.svg?style=flat
-    :target: https://github.com/rmnldwg
+    :target: https://github.com/lycosystem/lymph/blob/main/LICENSE
+.. image:: https://img.shields.io/badge/GitHub-lycosystem%2Flymph-blue.svg?style=flat
+    :target: https://github.com/lycosystem
 .. image:: https://img.shields.io/badge/DOI-10.1038%2Fs41598--021--91544--1-success.svg?style=flat
     :target: https://doi.org/10.1038/s41598-021-91544-1
-.. image:: https://github.com/rmnldwg/lymph/actions/workflows/tests.yml/badge.svg?style=flat
-    :target: https://github.com/rmnldwg/lymph/actions
-.. image:: https://github.com/rmnldwg/lymph/actions/workflows/build.yml/badge.svg?style=flat
+.. image:: https://github.com/lycosystem/lymph/actions/workflows/tests.yml/badge.svg?style=flat
+    :target: https://github.com/lycosystem/lymph/actions
+.. image:: https://github.com/lycosystem/lymph/actions/workflows/release.yml/badge.svg?style=flat
     :target: https://pypi.org/project/lymph-model/
-.. image:: https://codecov.io/gh/rmnldwg/lymph/branch/main/graph/badge.svg?token=LPXQPK5K78
-    :target: https://codecov.io/gh/rmnldwg/lymph
+.. image:: https://codecov.io/gh/lycosystem/lymph/branch/main/graph/badge.svg?token=LPXQPK5K78
+    :target: https://codecov.io/gh/lycosystem/lymph
 .. image:: https://readthedocs.org/projects/lymph-model/badge
     :target: https://lymph-model.readthedocs.io
 

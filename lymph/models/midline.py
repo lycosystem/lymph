@@ -301,7 +301,7 @@ class Midline(
         noext_lnl_params = self.noext.get_lnl_spread_params(as_flat=False)
 
         if ext_lnl_params != noext_lnl_params:
-            raise ValueError(
+            warnings.warn(
                 "LNL spread params not synched between ext and noext models. "
                 "Returning the ext params.",
             )
@@ -390,7 +390,7 @@ class Midline(
         ipsi_kwargs = global_kwargs.copy()
         ipsi_kwargs.update(kwargs.get("ipsi", {}))
         if self.use_central:
-            self.central.set_spread_params(*args, **ipsi_kwargs)
+            self.central.set_tumor_spread_params(*args, **ipsi_kwargs)
         self.ext.ipsi.set_tumor_spread_params(*args, **ipsi_kwargs)
         args = self.noext.ipsi.set_tumor_spread_params(*args, **ipsi_kwargs)
 

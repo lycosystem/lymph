@@ -264,7 +264,7 @@ class Model(ABC):
             `This issue`_ on GitHub provides more information for the rationale behind
             this mixin.
 
-        .. _This issue: https://github.com/rmnldwg/lymph/issues/95
+        .. _This issue: https://github.com/lycosystem/lymph/issues/95
         """
         return getattr(self, "_named_params", self.get_params(as_dict=True).keys())
 

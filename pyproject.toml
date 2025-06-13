@@ -30,7 +30,7 @@ dynamic = ["version"]
 
 [project.optional-dependencies]
 test = ["pytest", "scipy", "coverage", "emcee"]
-dev = ["pre-commit"]
+dev = ["pre-commit", "git-cliff"]
 docs = [
     "sphinx",
     "sphinx-book-theme",
@@ -43,7 +43,7 @@ docs = [
 ]
 
 [project.urls]
-source = "https://github.com/rmnldwg/lymph"
+source = "https://github.com/lycosystem/lymph"
 documentation = "https://lymph-model.readthedocs.io"
 
 

@@ -1,5 +1,6 @@
 """Test the midline model for the binary case."""
 import unittest
+import pytest
 
 import numpy as np
 import pandas as pd
@@ -16,7 +17,11 @@ class MidlineSetParamsTestCase(
     """Check that the complex parameter assignment works correctly."""
 
     def setUp(self):
-        return super().setUp(use_central=True, use_midext_evo=False)
+        return super().setUp(
+            graph_size="medium",
+            use_central=True,
+            use_midext_evo=False,
+        )
 
     def test_init(self) -> None:
         """Check some basic attributes."""
@@ -114,7 +119,7 @@ class MidlineRiskTestCase(
 
     def setUp(self) -> None:
         """Set up the test case."""
-        super().setUp()
+        super().setUp(graph_size="small")
         self.init_diag_time_dists(early="frozen", late="parametric")
         self.model.set_modality("pathology", spec=1.0, sens=1.0, kind="pathological")
         self.model.set_params(
@@ -209,3 +214,35 @@ class MidlineDrawPatientsTestCase(unittest.TestCase):
             rng=self.rng,
         )
         self.assertEqual(len(drawn_data), 100)
+
+
+
+@pytest.fixture
+def midline_model() -> models.Midline:
+    """Fixture to create a midline model for testing."""
+    graph_dict = fixtures.get_graph("medium")
+    return models.Midline.binary(graph_dict=graph_dict, use_midext_evo=False)
+
+
+def test_no_desync_after_set_params(midline_model: models.Midline) -> None:
+    """Test that setting parameters does not desync after a Value error."""
+    params_to_set = {
+        "ipsi_TtoI_spread": 0.4,
+        "ipsi_TtoII_spread": 0.7,
+        "ipsi_TtoIII_spread": 0.2,
+        "ipsi_TtoIV_spread": 0.05,
+        "contra_TtoI_spread": 0.05,
+        "contra_TtoII_spread": 0.1,
+        "contra_TtoIII_spread": 0.05,
+        "contra_TtoIV_spread": 0.01,
+        "mixing": 0.3,
+        "ItoII_spread": 0.2,
+        "IItoIII_spread": 0.3,
+        "IIItoIV_spread": -0.5,
+        "midext_prob": 0.2,
+    }
+
+    with pytest.raises(ValueError):
+        midline_model.set_params(**params_to_set)
+
+    midline_model.get_params()

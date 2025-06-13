@@ -18,7 +18,7 @@ To install the package from the source repository, start by cloning it.
 
 .. code-block:: bash
 
-    git clone https://github.com/rmnldwg/lymph
+    git clone https://github.com/lycosystem/lymph
     cd lymph
 
 From here you can again use `pip <http://www.pip-installer.org/>`_ to install the local copy of the package.
