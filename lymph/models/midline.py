@@ -301,7 +301,7 @@ class Midline(
         noext_lnl_params = self.noext.get_lnl_spread_params(as_flat=False)
 
         if ext_lnl_params != noext_lnl_params:
-            raise ValueError(
+            warnings.warn(
                 "LNL spread params not synched between ext and noext models. "
                 "Returning the ext params.",
             )
