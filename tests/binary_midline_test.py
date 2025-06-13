@@ -1,5 +1,6 @@
 """Test the midline model for the binary case."""
 import unittest
+import pytest
 
 import numpy as np
 import pandas as pd
@@ -78,20 +79,6 @@ class MidlineSetParamsTestCase(
         params_to_set = [0.0] * (num_dims - 1) + [expected_midext_prob]
         self.model.set_params(*params_to_set)
         self.assertEqual(self.model.midext_prob, expected_midext_prob)
-
-    def test_params_stay_synced(self) -> None:
-        """Ensure that a setting invalid params does not cause desync."""
-        param_names = self.model.get_params().keys()
-        values = np.linspace(0.0, 1.0, len(param_names))
-        params_to_set = {k: v for k, v in zip(param_names, values)}
-        params_to_set["IItoIII_spread"] = -10  # Invalid value
-        with self.assertRaises(ValueError):
-            self.model.set_params(**params_to_set)
-
-        try:
-            self.model.get_params()
-        except ValueError as e:
-            self.fail(f"Getting params failed with ValueError: {e}")
 
 
 class MidlineLikelihoodTestCase(
@@ -227,3 +214,35 @@ class MidlineDrawPatientsTestCase(unittest.TestCase):
             rng=self.rng,
         )
         self.assertEqual(len(drawn_data), 100)
+
+
+
+@pytest.fixture
+def midline_model() -> models.Midline:
+    """Fixture to create a midline model for testing."""
+    graph_dict = fixtures.get_graph("medium")
+    return models.Midline.binary(graph_dict=graph_dict, use_midext_evo=False)
+
+
+def test_no_desync_after_set_params(midline_model: models.Midline) -> None:
+    """Test that setting parameters does not desync after a Value error."""
+    params_to_set = {
+        "ipsi_TtoI_spread": 0.4,
+        "ipsi_TtoII_spread": 0.7,
+        "ipsi_TtoIII_spread": 0.2,
+        "ipsi_TtoIV_spread": 0.05,
+        "contra_TtoI_spread": 0.05,
+        "contra_TtoII_spread": 0.1,
+        "contra_TtoIII_spread": 0.05,
+        "contra_TtoIV_spread": 0.01,
+        "mixing": 0.3,
+        "ItoII_spread": 0.2,
+        "IItoIII_spread": 0.3,
+        "IIItoIV_spread": -0.5,
+        "midext_prob": 0.2,
+    }
+
+    with pytest.raises(ValueError):
+        midline_model.set_params(**params_to_set)
+
+    midline_model.get_params()
