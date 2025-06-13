@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.3.5] - 2025-06-10
+
+### Bug Fixes
+
+- Assign only tumor spread probs in midline.
+- (**mid**) Warn instead of raise when out of sync. Fixes [#102].
+
+### Documentation
+
+- Fix release badge in README.
+- Fix outdated links to rmnldwg.
+
+### Testing
+
+- Ensure midline params sync.
+- Add failing midline params desync. Related [#102].
+- Fix desync test case.
+
+### Build
+
+- Add git-cliff to dev dependencies.
+
 ## [1.3.4] - 2025-05-27
 
 ### Bug Fixes
@@ -906,6 +928,7 @@ Almost the entire API has changed. I'd therefore recommend to have a look at the
 - fix pyproject.toml typo
 - add pre-commit hook to check commit msg
 
+[1.3.5]: https://github.com/lycosystem/lymph/compare/1.3.4...1.3.5
 [1.3.4]: https://github.com/lycosystem/lymph/compare/1.3.3...1.3.4
 [1.3.3]: https://github.com/lycosystem/lymph/compare/1.3.2...1.3.3
 [1.3.2]: https://github.com/lycosystem/lymph/compare/1.3.1...1.3.2
@@ -931,6 +954,7 @@ Almost the entire API has changed. I'd therefore recommend to have a look at the
 [0.4.1]: https://github.com/lycosystem/lymph/compare/0.4.0...0.4.1
 [0.4.0]: https://github.com/lycosystem/lymph/compare/0.3.10...0.4.0
 
+[#102]: https://github.com/lycosystem/lymph/issues/102
 [#95]: https://github.com/lycosystem/lymph/issues/95
 [#88]: https://github.com/lycosystem/lymph/issues/88
 [#87]: https://github.com/lycosystem/lymph/issues/87
