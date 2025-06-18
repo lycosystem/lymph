@@ -76,9 +76,6 @@ ensure_newline_before_comments = true
 all = true
 
 
-[tool.ruff]
-exclude = ["tests", "docs"]
-
 [tool.ruff.lint]
 select = [
     "E",
@@ -96,9 +93,15 @@ select = [
     "N",
     "COM",
     "FURB",
-    "NPY201",
+    "NPY",
+    "UP",
 ]
 ignore = ["B028"]
+
+[tool.ruff.lint.per-file-ignores]
+"test/*" = [
+    "S101",
+]
 
 
 # git-cliff ~ default configuration file
