@@ -238,7 +238,7 @@ class Midline(
             "This instance does not marginalize over unknown midline extension.",
         )
 
-    def _get_params(self) -> dict[str, float]:
+    def get_params(self) -> dict[str, float]:
         """Return all the parameters of the model.
 
         Includes the spread parameters from the call to :py:meth:`get_spread_params`
@@ -246,9 +246,17 @@ class Midline(
         :py:meth:`~.diagnosis_times.Composite.get_distribution_params`. It also appends
         the probability of midline extension to the end of the returned params.
         """
-        return super()._get_params()
+        params = self._get_params()
 
-    def _set_params(self, *args: float, **kwargs: float) -> None:
+        if self.use_mixing:
+            params["mixing"] = self.mixing_param
+
+        # TODO: respect symmetries
+        params.update(self.get_distribution_params())
+        params["midext_prob"] = self.midext_prob
+        return params
+
+    def set_params(self, *args: float, **kwargs: float) -> tuple[float, ...]:
         """Set all parameters of the model.
 
         Combines the calls to :py:meth:`.set_spread_params` and
@@ -256,7 +264,33 @@ class Midline(
         for midline extension. Note that this parameter is always the last one that
         is set after the spread and distribution parameters.
         """
-        return super()._set_params(*args, **kwargs)
+        args = self._set_params(*args, **kwargs)
+        # TODO: what about mixing?
+        # TODO: what about synching LNL spread?
+
+        utils.synchronize_params(
+            get_from=self.ext.ipsi.get_graph().tumor_edges,
+            set_to=self.noext.ipsi.get_graph().tumor_edges,
+        )
+
+        if self.use_central:
+            utils.synchronize_params(
+                get_from=self.ext.ipsi.get_graph().tumor_edges,
+                set_to=self.central.ipsi.get_graph().tumor_edges,
+            )
+            utils.synchronize_params(
+                get_from=self.ext.ipsi.get_graph().tumor_edges,
+                set_to=self.central.contra.get_graph().tumor_edges,
+            )
+
+        if self.use_mixing:
+            mixing_param, args = utils.popfirst(args)
+            self.mixing_param = kwargs.get("mixing", mixing_param)
+
+        args = self.set_distribution_params(*args, **kwargs)
+        midext_prob, args = utils.popfirst(args)
+        self.midext_prob = kwargs.get("midext_prob", midext_prob)
+        return args
 
     def load_patient_data(
         self,

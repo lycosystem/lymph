@@ -143,7 +143,7 @@ class Bilateral(
         uni_kwargs["allowed_states"] = [0, 1, 2]
         return cls(*args, uni_kwargs=uni_kwargs, **kwargs)
 
-    def _get_params(self) -> dict[str, float]:
+    def get_params(self) -> dict[str, float]:
         """Return the parameters of the model.
 
         It returns the combination of the call to the :py:meth:`.Unilateral.get_params`
@@ -154,9 +154,11 @@ class Bilateral(
         Also see the :py:meth:`.get_spread_params` method to understand how the
         symmetry settings affect the return value.
         """
-        return super()._get_params()
+        params = self._get_params()
+        # TODO: Respect synching
+        params.update(self.get_distribution_params())
 
-    def _set_params(self, *args: float, **kwargs: float) -> None:
+    def set_params(self, *args: float, **kwargs: float) -> tuple[float, ...]:
         """Set new parameters to the model.
 
         This works almost exactly as the unilateral model's
@@ -190,7 +192,21 @@ class Bilateral(
         When still some positional arguments remain after that, they are returned
         in a tuple.
         """
-        return super()._set_params(*args, **kwargs)
+        args = self._set_params(*args, **kwargs)
+
+        if self.is_symmetric["tumor_spread"]:
+            utils.synchronize_params(
+                get_from=self.ipsi.get_graph().tumor_edges,
+                set_to=self.contra.get_graph().tumor_edges,
+            )
+
+        if self.is_symmetric["lnl_spread"]:
+            utils.synchronize_params(
+                get_from=self.ipsi.get_graph().lnl_edges,
+                set_to=self.contra.get_graph().lnl_edges,
+            )
+
+        return self.set_distribution_params(*args, **kwargs)
 
     def load_patient_data(
         self,

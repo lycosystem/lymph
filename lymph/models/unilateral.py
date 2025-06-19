@@ -21,9 +21,6 @@ from lymph.utils import (
     dict_to_func,  # noqa: F401
     draw_diagnosis,  # noqa: F401
     early_late_mapping,
-    flatten,
-    get_params_from,
-    set_params_for,
 )
 
 warnings.filterwarnings("ignore", category=pd.errors.PerformanceWarning)
@@ -169,40 +166,6 @@ class Unilateral(
             "'distributions', or 'data'.",
         )
 
-    def get_tumor_spread_params(
-        self,
-        as_dict: bool = True,
-        as_flat: bool = True,
-    ) -> types.ParamsType:
-        """Get the parameters of the tumor spread edges."""
-        return get_params_from(self.graph.tumor_edges, as_dict, as_flat)
-
-    def get_lnl_spread_params(
-        self,
-        as_dict: bool = True,
-        as_flat: bool = True,
-    ) -> types.ParamsType:
-        """Get the parameters of the LNL spread edges.
-
-        In the trinary case, this includes the growth parameters as well as the
-        microscopic modification parameters.
-        """
-        return get_params_from(self.graph.lnl_edges, as_dict, as_flat)
-
-    def get_spread_params(
-        self,
-        as_dict: bool = True,
-        as_flat: bool = True,
-    ) -> types.ParamsType:
-        """Get the parameters of the spread edges."""
-        params = self.get_tumor_spread_params(as_flat=as_flat)
-        params.update(self.get_lnl_spread_params(as_flat=as_flat))
-
-        if as_flat or not as_dict:
-            params = flatten(params)
-
-        return params if as_dict else params.values()
-
     def get_params(
         self,
         as_dict: bool = True,
@@ -218,20 +181,7 @@ class Unilateral(
         params.update(self.get_distribution_params())
         return params
 
-    def set_tumor_spread_params(self, *args: float, **kwargs: float) -> tuple[float]:
-        """Assign new parameters to the tumor spread edges."""
-        return set_params_for(self.graph.tumor_edges, *args, **kwargs)
-
-    def set_lnl_spread_params(self, *args: float, **kwargs: float) -> tuple[float]:
-        """Assign new parameters to the LNL spread edges."""
-        return set_params_for(self.graph.lnl_edges, *args, **kwargs)
-
-    def set_spread_params(self, *args: float, **kwargs: float) -> tuple[float]:
-        """Assign new parameters to the spread edges."""
-        args = self.set_tumor_spread_params(*args, **kwargs)
-        return self.set_lnl_spread_params(*args, **kwargs)
-
-    def set_params(self, *args: float, **kwargs: float) -> tuple[float]:
+    def set_params(self, *args: float, **kwargs: float) -> tuple[float, ...]:
         """Assign new parameters to the model.
 
         The parameters can be provided either via positional arguments or via keyword
