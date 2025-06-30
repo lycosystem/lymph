@@ -29,7 +29,7 @@ dependencies = ["numpy", "pandas", "cachetools"]
 dynamic = ["version"]
 
 [project.optional-dependencies]
-test = ["pytest", "scipy", "coverage", "emcee"]
+tests = ["pytest", "scipy", "coverage", "emcee"]
 dev = ["pre-commit", "git-cliff"]
 docs = [
     "sphinx",
