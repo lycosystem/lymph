@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.3.6] - 2025-06-30
+
+### Miscellaneous Tasks
+
+- Update pre-commit & ruff rules.
+
+### Testing
+
+- Update one doctest example.
+
+### Build
+
+- Switch to `src` layout. Fixes [#106].
+- Rename opt dependencies to `tests`.
+- Use tests dependency `pytest-cov` over `coverage`.
+
+### Ci
+
+- Update pre-commit config.
+
 ## [1.3.5] - 2025-06-10
 
 ### Bug Fixes
@@ -928,6 +948,7 @@ Almost the entire API has changed. I'd therefore recommend to have a look at the
 - fix pyproject.toml typo
 - add pre-commit hook to check commit msg
 
+[1.3.6]: https://github.com/lycosystem/lymph/compare/1.3.5...1.3.6
 [1.3.5]: https://github.com/lycosystem/lymph/compare/1.3.4...1.3.5
 [1.3.4]: https://github.com/lycosystem/lymph/compare/1.3.3...1.3.4
 [1.3.3]: https://github.com/lycosystem/lymph/compare/1.3.2...1.3.3
@@ -954,6 +975,7 @@ Almost the entire API has changed. I'd therefore recommend to have a look at the
 [0.4.1]: https://github.com/lycosystem/lymph/compare/0.4.0...0.4.1
 [0.4.0]: https://github.com/lycosystem/lymph/compare/0.3.10...0.4.0
 
+[#106]: https://github.com/lycosystem/lymph/issues/106
 [#102]: https://github.com/lycosystem/lymph/issues/102
 [#95]: https://github.com/lycosystem/lymph/issues/95
 [#88]: https://github.com/lycosystem/lymph/issues/88
