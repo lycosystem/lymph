@@ -879,10 +879,10 @@ class Unilateral(
         >>> model.set_modality("CT", spec=0.8, sens=0.8)
         >>> model.draw_diagnosis([0, 1, 2, 3, 4])       # doctest: +NORMALIZE_WHITESPACE
         array([[False,  True],
-               [False, False],
-               [ True, False],
                [False,  True],
-               [False, False]])
+               [ True,  True],
+               [ True,  True],
+               [False,  True]])
         >>> draw_diagnosis(                   # this is the same as the previous example
         ...     diagnosis_times=[0, 1, 2, 3, 4],
         ...     state_evolution=model.state_dist_evo(),
@@ -890,10 +890,10 @@ class Unilateral(
         ...     possible_diagnosis=model.obs_list,
         ... )
         array([[False,  True],
-               [False, False],
-               [ True, False],
                [False,  True],
-               [False, False]])
+               [ True,  True],
+               [ True,  True],
+               [False,  True]])
         """
         if rng is None:
             rng = np.random.default_rng(seed)
