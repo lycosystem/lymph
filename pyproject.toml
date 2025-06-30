@@ -46,18 +46,12 @@ docs = [
 source = "https://github.com/lycosystem/lymph"
 documentation = "https://lymph-model.readthedocs.io"
 
-
 [tool.setuptools_scm]
-write_to = "lymph/_version.py"
+write_to = "src/lymph/_version.py"
 local_scheme = "no-local-version"
 
-[tool.setuptools]
-packages = ["lymph"]
-include-package-data = true
-
-[tool.setuptools.dynamic]
-version = { attr = "lymph._version.version" }
-
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

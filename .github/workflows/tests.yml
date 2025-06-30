@@ -1,41 +1,56 @@
-# This is a workflow that runs test on the package
-name: Run tests
+name: tests
 
-# Controls when the action will run.
 on:
-  # Triggers the workflow on push or pull request events but only for the main branch
   push:
     branches: [ main ]
   pull_request:
     branches: [ main ]
 
-  # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
 
-# A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
-  # This workflow contains a single job called "build"
-  build:
-    # The type of runner that the job will run on
+  test:
+    name: Run tests & report coverage
     runs-on: ubuntu-latest
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
+    permissions:
+      pull-requests: write
+      contents: write
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-      - name: Install python 3
-        uses: actions/setup-python@v4
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: "3.10"
-      - name: install dependencies
+
+      - name: Install dependencies
         run: |
-          python3 -m pip install -U pip setuptools setuptools-scm wheel
-          python3 -m pip install .[test]
-      - name: Run tests
-        run: |
-          coverage run --omit=tests/*,*/_*.py -m pytest --doctest-modules
-          coverage xml
-      - name: Upload to codecov
-        uses: codecov/codecov-action@v3
+          python -m pip install --upgrade pip
+          python -m pip install .[tests]
+
+      # Below, we first run pytest in the `tests/` folder. Because we use a `src`
+      # layout, this will fail if the package is not installed correctly.
+      - name: Test package is installable
+        run: pytest --cov=lymph --cov-config=pyproject.toml tests
+        env:
+          COVERAGE_FILE: .coverage.is_installable
+
+      # Now, we execute all doctests in the `src` tree. This will NOT run with
+      # the installed code, but it doesn't matter, because we already know it is
+      # installable from the step above.
+      - name: Run doctests
+        if: success() || failure()   # run these even if previous step fails
+        run: pytest --cov=lymph --cov-config=pyproject.toml --doctest-modules src
+        env:
+          COVERAGE_FILE: .coverage.doctests
+          GITHUB_TOKEN: ${{ secrets.LYCOSYSTEM_READALL }}
+
+      # Lastly, we collect all files that start with `.coverage` into one file and
+      # create a report either as a comment on the PR or in a separate branch if its
+      # a commit to the main branch. From that branch we can put badges and coverage
+      # reports into e.g. our main README.md
+      - name: Add coverage comment
+        if: success() || failure()   # run these even if previous step fails
+        uses: py-cov-action/python-coverage-comment-action@v3
+        with:
+          GITHUB_TOKEN: ${{ github.token }}
+          MERGE_COVERAGE_FILES: true
