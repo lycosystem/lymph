@@ -222,6 +222,17 @@ DiagnosisType = dict[str, PatternType]
 ... }
 """
 
+CohortsType = dict[int, bool]
+"""Mapping of cohort id to whether it represents an extension cohort.
+
+Keys are cohort identifiers (integers) and values are ``True`` if the cohort
+represents patients with midline extension and ``False`` otherwise. This can be
+passed to the :py:meth:`~lymph.models.midline.Midline` constructor when using
+cohorts to explicitly communicate which cohorts correspond to midline extension.
+
+Example: ``{0: False, 1: True, 2: True}`` where ``0`` is the no-extension cohort.
+"""
+
 
 ModelT = TypeVar("ModelT", bound="Model")
 
