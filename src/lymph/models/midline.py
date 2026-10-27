@@ -224,7 +224,7 @@ class Midline(
         #     self.midext_probs = dict.fromkeys(self.cohorts, 0.2)
         # else:
         #     self.midext_prob = 0.5
-        self.midext_probs = dict.fromkeys(self.cohorts, 1 / (len(self.cohorts) + 1))
+        self._midext_probs = dict.fromkeys(self.cohorts, 1 / (len(self.cohorts) + 1))
 
         diagnosis_times.Composite.__init__(
             self,
@@ -271,8 +271,15 @@ class Midline(
     @property
     def midext_prob(self) -> float:
         """Return the probability of midline extension."""
-        if hasattr(self, "_midext_prob"):
-            return self._midext_prob
+        if hasattr(self, "_midext_probs"):
+            values = set(self._midext_probs.values())
+
+            if len(values) != 1:
+                warnings.warn(
+                    "Multiple cohorts with different midline extnsion probabilities."
+                    " Will return probability of first cohort.",
+                )
+            return next(iter(values))
         return 0.0
 
     @midext_prob.setter
@@ -280,25 +287,52 @@ class Midline(
         """Set the probability of midline extension."""
         if value is not None and not 0.0 <= value <= 1.0:
             raise ValueError("The midline extension prob must be in the range [0, 1].")
-        self._midext_prob = value
+        self._midext_probs = dict.fromkeys(self.cohorts, value)
 
     @property
     def midext_probs(self) -> float:
         """Return the probability of midline extension."""
         if hasattr(self, "_midext_probs"):
-            return self._midext_probs
+            return self._midext_probs.copy()
         return 0.0
 
-    @midext_probs.setter
-    def midext_probs(self, value: dict) -> None:
-        """Set the probability of midline extension."""
-        if value is not None and (
-            not all(0.0 <= v for v in value.values()) or not sum(value.values()) <= 1.0
-        ):
-            raise ValueError("The midline extension prob must be in the range [0, 1].")
-        self._midext_probs = value
+    def _validate_midext_probs(self, value: dict[int, float]) -> None:
+        """Validate midline extension probabilities."""
+        if not set(value.keys()).issubset(set(self.cohorts)):
+            extra_keys = set(value.keys()) - set(self.cohorts)
+            raise ValueError(f"Found invalid cohort keys: {extra_keys}")
 
-    def set_midext_prob_for_cohort(self, cohort: int, value: float) -> None:
+        if not all(0.0 <= v <= 1.0 for v in value.values()):
+            raise ValueError(
+                "All midline extension probs must be in the range [0, 1].",
+            )
+        if not self.use_midext_evo:
+            if sum(value.values()) > 1.0:
+                raise ValueError(
+                    "The sum of midline extension probs cannot exceed 1.0"
+                    f" (got {sum(value.values())}).",
+                )
+
+        return  # Validation passed successfully
+
+    @midext_probs.setter
+    def midext_probs(self, value: int | float | dict[int, float]) -> None:
+        """Set the probability of midline extension."""
+        # self._validate_midext_probs(value) -> need to move to the end
+        new_probs = self._midext_probs.copy()
+
+        if isinstance(value, (float | int)):
+            new_probs = {cid: float(value) for cid in self.cohorts}
+        else:
+            if not set(value.keys()).issubset(set(self.cohorts)):
+                extra_keys = set(value.keys()) - set(self.cohorts)
+                raise ValueError(f"Found invalid cohort keys: {extra_keys}")
+            new_probs.update(value)
+
+        self._validate_midext_probs(new_probs)
+        self._midext_probs = new_probs
+
+    def set_midext_prob(self, cohort: int, value: float) -> None:
         """Set midline extension probability for a specific cohort."""
         if not hasattr(self, "_midext_probs"):
             raise RuntimeError("midext_probs not initialized")
@@ -311,16 +345,6 @@ class Midline(
         self._validate_midext_probs(updated)
 
         self._midext_probs = updated
-
-    def _validate_midext_probs(self, probs: dict) -> None:
-        """Validate midline extension probabilities."""
-        if not all(0.0 <= v <= 1.0 for v in probs.values()):
-            raise ValueError("All midline extension probs must be in [0, 1].")
-        if sum(probs.values()) > 1.0:
-            raise ValueError(
-                f"Sum of midline extension probs must be ≤ 1.0, "
-                f"got {sum(probs.values())}",
-            )
 
     @property
     def mixing_param(self) -> float | None:
@@ -683,42 +707,88 @@ class Midline(
         """Set all parameters of the model.
 
         Combines the calls to :py:meth:`.set_spread_params` and
-        :py:meth:`.set_distribution_params`. Additionally, it sets the probability
-        for midline extension. Note that this parameter is always the last one that
-        is set after the spread and distribution parameters.
+        :py:meth:`.set_distribution_params`. Additionally, it sets the probabilities
+        for midline extension. Note that these parameter are always the last ones that
+        are set after the spread and distribution parameters.
         """
-        last_param_idx = self.get_num_dims() - 1
-        before, last, after = utils.popat(args, idx=last_param_idx)
-        # if self.use_cohorts:
-        #     if kwargs.get("midext_probs", last) is not None:
-        #         self.midext_probs = kwargs.get("midext_probs", last)
-        # Extract and reconstruct flattened midext_probs_* keys
-        midext_probs_dict = {}
+        num_cohorts = len(self.cohorts)
+        midext_prob_idx = self.get_num_dims() - num_cohorts
+
+        before = args
+        after = ()
+        midext_args = None
+
+        if len(args) > midext_prob_idx:
+            before = args[:midext_prob_idx]
+            rem = args[midext_prob_idx:]
+
+            if len(rem) >= num_cohorts:
+                midext_args = rem[:num_cohorts]
+                after = rem[num_cohorts:]
+            elif len(rem) == 1:
+                midext_args = rem
+                after = ()
+
+        update_midext_probs = {}
         for cid in self.cohorts:
             key = f"midext_probs_{cid}"
             if key in kwargs:
-                midext_probs_dict[cid] = kwargs.pop(key)
+                update_midext_probs[cid] = kwargs.pop(key)
+                # self.set_midext_prob(cid, kwargs.pop(key))
+        self.midext_probs = update_midext_probs
 
-        # If no flattened keys found, try the singular "midext_probs" key
-        if not midext_probs_dict and "midext_probs" in kwargs:
-            midext_probs_dict = kwargs.pop("midext_probs")
+        if "midext_probs" in kwargs:
+            self.midext_probs = kwargs.pop("midext_probs")
 
-        # If we got any values, validate and set
-        if midext_probs_dict:
-            if isinstance(midext_probs_dict, dict):
-                self._validate_midext_probs(midext_probs_dict)
-                self._midext_probs = midext_probs_dict
-            else:
-                if last is not None:
-                    # For now, skip setting if we can't unambiguously reconstruct
-                    pass
-                args = before + after
-        # else:
-        #     if kwargs.get("midext_prob", last) is not None:
-        #         self.midext_prob = kwargs.get("midext_prob", last)
+        elif "midext_prob" in kwargs:
+            self.midext_probs = kwargs.pop("midext_prob")
+
+        else:
+            if midext_args is not None:
+                if len(midext_args) == 1:
+                    self.midext_probs = midext_args[0]
+                elif len(midext_args) == num_cohorts:
+                    self.midext_probs = dict(
+                        zip(self.cohorts, midext_args, strict=False),
+                    )
 
         args = self.set_spread_params(*(before + after), **kwargs)
         return self.set_distribution_params(*args, **kwargs)
+
+    # last_param_idx = self.get_num_dims() - 1
+    # before, last, after = utils.popat(args, idx=last_param_idx)
+    # # if self.use_cohorts:
+    # #     if kwargs.get("midext_probs", last) is not None:
+    # #         self.midext_probs = kwargs.get("midext_probs", last)
+    # # Extract and reconstruct flattened midext_probs_* keys
+    # midext_probs_dict = self._midext_probs.copy()
+    # for cid in self.cohorts:
+    #     key = f"midext_probs_{cid}"
+    #     if key in kwargs:
+    #         midext_probs_dict[cid] = kwargs.pop(key)
+
+    # # If no flattened keys found, try the singular "midext_probs" key
+    # # if not midext_probs_dict and "midext_probs" in kwargs:
+    # #     midext_probs_dict = kwargs.pop("midext_probs")
+    # if "midext_probs" in kwargs:
+    #     midext_probs_dict.update(kwargs.pop("midext_probs"))
+
+    # # If we got any values, validate and set
+    # if midext_probs_dict:
+    #     if isinstance(midext_probs_dict, dict):
+    #         self._validate_midext_probs(midext_probs_dict)
+    #         self._midext_probs = midext_probs_dict
+    #     else:
+    #         if last is not None:
+    #             # For now, skip setting if we can't unambiguously reconstruct
+    #             pass
+    #         args = before + after
+    # # else:
+    # #     if kwargs.get("midext_prob", last) is not None:
+    # #         self.midext_prob = kwargs.get("midext_prob", last)
+
+    # args = self.set_spread_params(*(before + after), **kwargs)
+    # return self.set_distribution_params(*args, **kwargs)
 
     def load_patient_data(
         self,
@@ -814,28 +884,13 @@ class Midline(
             if unknown_ext.sum() > 0:
                 self.ext.load_patient_data(patient_data[unknown_ext], mapping)
 
-            # first try to do it the same way as old one to make sure it
-            #  works with just one noext cohort
-            # for coh in self.cohorts:
-            #     mask = patient_data[MAP_COH_COL] == coh
-            #     self._cohort_models[coh].load_patient_data(patient_data[mask], mapping)
-
-            # mask_0 = patient_data[MAP_COH_COL] == 0
-            # unknown_cohort = patient_data[MAP_COH_COL] == -1
-            # unknown_noext = unknown_cohort & (midext_data == False) | mask_0 # noqa: E712
-            # unknown_ext = unknown_cohort & (midext_data == True)  # noqa: E712
-            # if unknown_noext.sum() > 0:
-            #     self._cohort_models[0].load_patient_data(patient_data[unknown_noext], mapping)
-            # if unknown_ext.sum() > 0:
-            #     self.ext.load_patient_data(patient_data[unknown_ext], mapping)
-
             # TODO: also implement central for the cohorts?
 
         is_unknown = midext_data.isna()
         if self.marginalize_unknown and is_unknown.sum() > 0:
             self.unknown.load_patient_data(
                 patient_data[is_unknown],
-                mapping
+                mapping,
             )
         elif is_unknown.sum() > 0:
             warnings.warn(
@@ -975,7 +1030,7 @@ class Midline(
                     ) @ self._cohort_models[i].contra.transition_matrix()
                 contra_dist_evo[i] = contra_dist_evo_temp
 
-            # calculate evolution into the last cohort 
+            # calculate evolution into the last cohort
             # (will stay there and not continue to grow)
             contra_dist_evo_temp = np.zeros_like(coh0_contra_dist_evo)
             for t in range(self.max_time):
@@ -1060,7 +1115,7 @@ class Midline(
         ]
         return np.stack(obs_dist)
 
-    # TODO: have not touched this at all for the cohorts implementation, 
+    # TODO: have not touched this at all for the cohorts implementation,
     # will need to see what we need to do about this!
     def patient_likelihoods(
         self,
@@ -1084,7 +1139,6 @@ class Midline(
         for stage in t_stages:
             t_idx = patient_data[MAP_T_COL] == stage
             diag_time_matrix = np.diag(self.get_distribution(stage).pmf)
-            num_states = ipsi_dist_evo.shape[1]
             # see the `Bilateral` model for why this is done in this way.
             for case in ["ext", "noext"]:
                 loc = 0 if case == "ext" else 1
@@ -1395,7 +1449,7 @@ class Midline(
                 raise ValueError(
                     f"cohort must be in {available_cohorts}, got {cohort}",
                 )
-        # I think we don't need to infer midext / cohort from each other, 
+        # I think we don't need to infer midext / cohort from each other,
         # only want to use 'one at a time'!
 
         posterior_state_dist = self.posterior_state_dist(
