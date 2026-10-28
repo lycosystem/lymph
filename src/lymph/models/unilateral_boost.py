@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 import warnings
 from collections.abc import Sequence
-from functools import wraps
 from typing import Any, Literal
 
 import numpy as np
@@ -20,20 +19,6 @@ logger = logging.getLogger(__name__)
 MAP_T_COL = ("_model", "core", "t_stage")
 RAW_T_COL_OLD = ("tumor", "1", "t_stage")
 RAW_T_COL_NEW = ("tumor", "core", "t_stage")
-
-
-def select_tstage_model(method):
-    """Decorate methods that simply delegate to the `early` or `late` model."""
-
-    @wraps(method)
-    def wrapper(self, *args, t_stage: str | None = None, **kwargs):
-        if t_stage is None:
-            raise ValueError("Must provide t_stage.")
-
-        _model = self.early if t_stage == "early" else self.late
-        return method(_model, *args, **kwargs)
-
-    return wrapper
 
 
 class BoostUnilateral(
@@ -61,6 +46,8 @@ class BoostUnilateral(
     def __init__(
         self,
         graph_dict: types.GraphDictType,
+        lnl_method: Literal["logit_ratio", "logit_shift"],
+        tumor_method: Literal["logit_ratio", "logit_shift"],
         named_params: Sequence[str] | None = None,
         uni_kwargs: dict[str, Any] | None = None,
         early_kwargs: dict[str, Any] | None = None,
@@ -81,14 +68,26 @@ class BoostUnilateral(
             late_kwargs=late_kwargs,
         )
 
+        # set the methods of boosting, this is now mainly for testing different methods
+        self.lnl_method = lnl_method
+        self.tumor_method = tumor_method
+
+        # set the parameters needed for boosting and transition
+        # I think at some point I'll also need to add some setter
+        # functions etc. to make things correct
+        self.lnl_boost = 0.5
+        self.tumor_boost = 0.5
+
+        self.advanced_prob = 0.5
+
         diagnosis_times.Composite.__init__(
             self,
-            distribution_children={"early": self.early, "late": self.late},
+            distribution_children={"base": self.early, "boosted": self.late},
             is_distribution_leaf=False,
         )
         modalities.Composite.__init__(
             self,
-            modality_children={"early": self.early, "late": self.late},
+            modality_children={"base": self.early, "boosted": self.late},
             is_modality_leaf=False,
         )
 
@@ -156,16 +155,83 @@ class BoostUnilateral(
 
         return self.early.is_binary
 
+    @property
+    def advanced_prob(self) -> float:
+        """Return the probability of advanced T-stage."""
+        if hasattr(self, "_advanced_prob"):
+            return self._advanced_prob
+        return 0.0
+
+    @advanced_prob.setter
+    def advanced_prob(self, value: float) -> None:
+        """Set the probability of advanced T-stage."""
+        if value is not None and not 0.0 <= value <= 1.0:
+            raise ValueError("The advanced T-stage prob must be in the range [0, 1].")
+        self._advanced_prob = value
+
+    @property
+    def lnl_boost(self) -> float:
+        """Return the LNL boost."""
+        if hasattr(self, "_lnl_boost"):
+            return self._lnl_boost
+        return 0.0
+
+    @lnl_boost.setter
+    def lnl_boost(self, value: float) -> None:
+        """Set the LNL boost."""
+        if self.lnl_method == "logit_shift":
+            if value is not None and not -5.0 <= value <= 5.0:
+                raise ValueError("The lnl boost must be in the range [-5, 5].")
+        if self.lnl_method == "logit_ratio":
+            if value is not None and not 0 <= value <= 10.0:
+                raise ValueError("The lnl boost must be in the range [0, 10].")
+        self._lnl_boost = value
+
+    @property
+    def tumor_boost(self) -> float:
+        """Return the tumor boost."""
+        if hasattr(self, "_tumor_boost"):
+            return self._tumor_boost
+        return 0.0
+
+    @tumor_boost.setter
+    def tumor_boost(self, value: float) -> None:
+        """Set the tumor boost."""
+        if self.tumor_method == "logit_shift":
+            if value is not None and not -5.0 <= value <= 5.0:
+                raise ValueError("The tumor boost must be in the range [-5, 5].")
+        if self.tumor_method == "logit_ratio":
+            if value is not None and not 0 <= value <= 10.0:
+                raise ValueError("The tumor boost must be in the range [0, 10].")
+        self._tumor_boost = value
+
+    @staticmethod
+    def boost_late(
+        model_param: float,
+        boost_param: float,
+        method: Literal["logit_ratio", "logit_shift"],
+    ) -> float:
+        """Compute boosted parameter according to selected method."""
+        param_logit = np.log(model_param / (1 - model_param))
+
+        if method == "logit_ratio":
+            exp_term = np.exp(boost_param * param_logit)
+            return exp_term / (1 + exp_term)
+        if method == "logit_shift":
+            exp_term = np.exp(boost_param + param_logit)
+            return exp_term / (1 + exp_term)
+
+        raise ValueError("Invalid mode. Must be either 'logit_ratio' or 'logit_shift'.")
+
     def get_tumor_spread_params(
         self,
         as_dict: bool = True,
         as_flat: bool = True,
     ) -> types.ParamsType:
         """Return the parameters of the model's spread from tumor to LNLs."""
-        params = {
-            "early": self.early.get_tumor_spread_params(as_flat=as_flat),
-            "late": self.late.get_tumor_spread_params(as_flat=as_flat),
-        }
+        # do we even need to return the late parameters? probably not, but might be nice
+        # to also see them directly?
+        params = self.early.get_tumor_spread_params(as_flat=as_flat)
         if as_flat or not as_dict:
             params = utils.flatten(params)
 
@@ -180,10 +246,7 @@ class BoostUnilateral(
 
         Similarly to the :py:meth:`.get_tumor_spread_params` method.
         """
-        params = {
-            "early": self.early.get_lnl_spread_params(as_flat=as_flat),
-            "late": self.late.get_lnl_spread_params(as_flat=as_flat),
-        }
+        params = self.early.get_lnl_spread_params(as_flat=as_flat)
         if as_flat or not as_dict:
             params = utils.flatten(params)
 
@@ -221,7 +284,13 @@ class BoostUnilateral(
         Also see the :py:meth:`.get_spread_params` method to understand how the
         symmetry settings affect the return value.
         """
-        params = self.get_spread_params(as_flat=as_flat)
+        params = {}
+
+        params["lnl_boost"] = self.lnl_boost
+        params["tumor_boost"] = self.tumor_boost
+        params["advanced_prob"] = self.advanced_prob
+
+        params.update(self.get_spread_params(as_flat=as_flat))
         params.update(self.get_distribution_params(as_flat=as_flat))
 
         if as_flat or not as_dict:
@@ -231,40 +300,32 @@ class BoostUnilateral(
 
     def set_tumor_spread_params(self, *args: float, **kwargs: float) -> tuple[float]:
         """Set the parameters of the model's spread from tumor to LNLs."""
-        kwargs, global_kwargs = utils.unflatten_and_split(
-            kwargs,
-            expected_keys=["early", "late"],
-        )
+        args = self.early.set_tumor_spread_params(*args, **kwargs)
 
-        early_kwargs = global_kwargs.copy()
-        early_kwargs.update(kwargs.get("early", {}))
-        late_kwargs = global_kwargs.copy()
-        late_kwargs.update(kwargs.get("late", {}))
-
-        args = self.early.set_tumor_spread_params(*args, **early_kwargs)
-        args = self.late.set_tumor_spread_params(*args, **late_kwargs)
-        utils.synchronize_params(  # might be redundant check later
-            get_from=self.early.graph.lnl_edges,
-            set_to=self.late.graph.lnl_edges,
-        )
+        late_kwargs = {}
+        for key, early_param in self.early.get_tumor_spread_params().items():
+            late_kwargs[key] = self.boost_late(
+                early_param,
+                self.tumor_boost,
+                self.tumor_method,
+            )
+        self.late.set_tumor_spread_params(**late_kwargs)
 
         return args
 
     def set_lnl_spread_params(self, *args: float, **kwargs: float) -> tuple[float]:
         """Set the parameters of the model's spread from LNLs to tumor."""
-        kwargs, global_kwargs = utils.unflatten_and_split(
-            kwargs,
-            expected_keys=["early", "late"],
-        )
+        args = self.early.set_lnl_spread_params(*args, **kwargs)
 
-        early_kwargs = global_kwargs.copy()
-        early_kwargs.update(kwargs.get("early", {}))
-        late_kwargs = global_kwargs.copy()
-        late_kwargs.update(kwargs.get("late", {}))
-
-        args = self.early.set_lnl_spread_params(*args, **early_kwargs)
-
-        return self.late.set_lnl_spread_params(*args, **late_kwargs)
+        late_kwargs = {}
+        for key, early_param in self.early.get_lnl_spread_params().items():
+            late_kwargs[key] = self.boost_late(
+                early_param,
+                self.lnl_boost,
+                self.lnl_method,
+            )
+        self.late.set_lnl_spread_params(**late_kwargs)
+        return args
 
     def set_spread_params(self, *args: float, **kwargs: float) -> tuple[float]:
         """Set the parameters of the model's spread edges."""
@@ -273,6 +334,27 @@ class BoostUnilateral(
 
     def set_params(self, *args: float, **kwargs: float) -> tuple[float]:
         """Set new parameters to the model."""
+        lnl_boost, args = utils.popfirst(args)
+        lnl_boost = kwargs.get(
+            "lnl_boost",
+            self.lnl_boost if lnl_boost is None else lnl_boost,
+        )
+        self.lnl_boost = kwargs.get("lnl_boost", lnl_boost)
+
+        tumor_boost, args = utils.popfirst(args)
+        tumor_boost = kwargs.get(
+            "tumor_boost",
+            self.tumor_boost if tumor_boost is None else tumor_boost,
+        )
+        self.tumor_boost = kwargs.get("tumor_boost", tumor_boost)
+
+        advanced_prob, args = utils.popfirst(args)
+        advanced_prob = kwargs.get(
+            "advanced_prob",
+            self.advanced_prob if advanced_prob is None else advanced_prob,
+        )
+        self.advanced_prob = kwargs.get("advanced_prob", advanced_prob)
+
         args = self.set_spread_params(*args, **kwargs)
         return self.set_distribution_params(*args, **kwargs)
 
@@ -305,30 +387,110 @@ class BoostUnilateral(
             mapping=mapping,
         )
 
+    def tstage_evo(self) -> np.ndarray:
+        """Evolve only the state of T-stage."""
+        time_steps = np.arange(self.max_time + 1)
+        tstage_states = np.zeros(shape=(self.max_time + 1, 2), dtype=float)
+        tstage_states[:, 0] = (1.0 - self.advanced_prob) ** time_steps
+        tstage_states[:, 1] = 1.0 - tstage_states[:, 0]
+        return tstage_states
+
+    def state_dist_evo(self) -> tuple[np.ndarray, np.ndarray]:
+        """Evolve states for early and late T-stage.
+
+        T-stage is part of the state, this means we need to consider the probability
+        of staying early T-stage or transitioning to late T-stage. This means we need to
+        construct the distribution for late T-stage recursively.
+        """
+        early_dist_evo = self.early.state_dist_evo()
+        tstage_evo = self.tstage_evo()
+
+        early_dist_evo *= tstage_evo[:, 0].reshape(-1, 1)
+        late_dist_evo = np.zeros_like(early_dist_evo)
+
+        for t in range(self.max_time):
+            late_dist_evo[t + 1] = (
+                self.advanced_prob * early_dist_evo[t] + late_dist_evo[t]
+            ) @ self.late.transition_matrix()
+
+        return early_dist_evo, late_dist_evo
+
+    def state_dist(
+        self,
+        t_stage: str = "early",
+        mode: Literal["HMM", "BN"] = "HMM",
+    ) -> np.ndarray:
+        """Compute the distribution over possible states.
+
+        Do this for a given ``t_stage``, which is essentially a marginalization of the
+        evolution over the possible states as computed by :py:meth:`.state_dist_evo`
+        with the distribution over diagnosis times for the given T-stage from the
+        dictionary returned by :py:meth:`.get_all_distributions`.
+        """
+        early_dist_evo, late_dist_evo = self.state_dist_evo()
+        if mode == "HMM":
+            if t_stage == "early":
+                diag_time_dist = self.early.get_distribution(t_stage).pmf
+                return diag_time_dist @ early_dist_evo
+            if t_stage == "late":
+                diag_time_dist = self.late.get_distribution(t_stage).pmf
+                return diag_time_dist @ late_dist_evo
+            raise ValueError("T-stage needs to be early or late.")
+
+        raise NotImplementedError("Only HMM mode is supported as of now.")
+
+    def obs_dist(
+        self,
+        given_state_dist: np.ndarray | None = None,
+        t_stage: str = "early",
+        mode: Literal["HMM", "BN"] = "HMM",
+    ) -> np.ndarray:
+        """Compute the distribution over all possible observations for a given T-stage.
+
+        Returns an array of probabilities for each possible complete observation. This
+        entails multiplying the distribution over states as returned by the
+        :py:meth:`.state_dist` method with the :py:meth:`.observation_matrix`.
+
+        Note that since the :py:attr:`.observation_matrix` can become very large, this
+        method is not very efficient for inference. Instead, we compute the
+        :py:meth:`.diagnosis_matrix` from the :py:meth:`.observation_matrix` and
+        the :py:meth:`.data_matrix` and use these to compute the likelihood.
+        """
+        if given_state_dist is None:
+            given_state_dist = self.state_dist(t_stage=t_stage, mode=mode)
+
+        if t_stage == "early":
+            return self.early.obs_dist(given_state_dist=given_state_dist)
+        if t_stage == "late":
+            return self.late.obs_dist(given_state_dist=given_state_dist)
+        raise ValueError("T-stage needs to be early or late")
+
     def _hmm_likelihood(self, log: bool = True, t_stage: str | None = None) -> float:
         """Compute the HMM likelihood of data, using the stored params."""
         llh = 0.0 if log else 1.0
 
-        early_likelihood = self.early._hmm_likelihood(log=log, t_stage=t_stage)
-        late_likelihood = self.late._hmm_likelihood(log=log, t_stage=t_stage)
+        early_dist_evo, late_dist_evo = self.state_dist_evo()
 
-        if log:
-            llh += early_likelihood + late_likelihood
-        else:
-            llh *= early_likelihood * late_likelihood
-        return llh
+        # do the evolution of states for early
+        patient_llhs_early = (
+            self.get_distribution("early").pmf
+            @ early_dist_evo
+            @ self.early.diagnosis_matrix("early").T
+        )
+        llh = utils.add_or_mult(llh, patient_llhs_early, log=log)
 
-    def _bn_likelihood(self, log: bool = True, t_stage: str | None = None) -> float:
-        """Compute the BN likelihood of data, using the stored params."""
-        llh = 0.0 if log else 1.0
+        # do the evolution of states for late
+        patient_llhs_late = (
+            self.get_distribution("late").pmf
+            @ late_dist_evo
+            @ self.late.diagnosis_matrix("late").T
+        )
+        llh = utils.add_or_mult(llh, patient_llhs_late, log=log)
 
-        early_likelihood = self.early._bn_likelihood(log=log, t_stage=t_stage)
-        late_likelihood = self.late._bn_likelihood(log=log, t_stage=t_stage)
-
-        if log:
-            llh += early_likelihood + late_likelihood
-        else:
-            llh *= early_likelihood * late_likelihood
+        if t_stage == "early":
+            return utils.add_or_mult(0.0 if log else 1.0, patient_llhs_early, log=log)
+        if t_stage == "late":
+            return utils.add_or_mult(0.0 if log else 1.0, patient_llhs_late, log=log)
         return llh
 
     def likelihood(
@@ -367,39 +529,59 @@ class BoostUnilateral(
 
         if mode == "HMM":
             return self._hmm_likelihood(log, t_stage)
-        if mode == "BN":
-            return self._bn_likelihood(log, t_stage)
 
-        raise ValueError("Invalid mode. Must be either 'HMM' or 'BN'.")
+        raise ValueError("Invalid mode. Only 'HMM' is supported.")
 
-    @select_tstage_model
-    def state_dist(self, model: models.Unilateral, *args, **kwargs) -> np.ndarray:
-        """Compute the distribution over possible states.
-
-        See :py:meth:`.models.Unilateral.state_dist` for more information.
-        """
-        return model.state_dist(*args, **kwargs)
-
-    @select_tstage_model
     def posterior_state_dist(
         self,
-        model: models.Unilateral,
-        *args,
-        **kwargs,
+        given_params: types.ParamsType | None = None,
+        given_state_dist: np.ndarray | None = None,
+        given_diagnosis: types.DiagnosisType | None = None,
+        t_stage: str | int = "early",
+        mode: Literal["HMM", "BN"] = "HMM",
     ) -> np.ndarray:
         """Compute the posterior distribution over hidden states given a diagnosis.
 
         See :py:meth:`.models.Unilateral.posterior_state_dist` for more information.
         """
-        return model.posterior_state_dist(*args, **kwargs)
+        if given_state_dist is None:
+            utils.safe_set_params(self, given_params)
+            given_state_dist = self.state_dist(t_stage, mode=mode)
 
-    @select_tstage_model
-    def marginalize(self, model: models.Unilateral, *args, **kwargs) -> np.ndarray:
+        if given_diagnosis is None:
+            return given_state_dist
+
+        given_state_dist = given_state_dist / given_state_dist.sum()
+
+        return self.early.posterior_state_dist(
+            given_state_dist=given_state_dist,
+            given_diagnosis=given_diagnosis,
+        )
+
+    def marginalize(
+        self,
+        involvement: dict[str, types.PatternType] | None = None,
+        given_state_dist: np.ndarray | None = None,
+        t_stage: str = "early",
+        mode: Literal["HMM", "BN"] = "HMM",
+    ) -> np.ndarray:
         """Marginalize ``given_state_dist`` over matching ``involvement`` patterns.
 
         See :py:meth:`.models.Unilateral.marginalize` for more information.
         """
-        return model.marginalize(*args, **kwargs)
+        if involvement is None:
+            involvement = {}
+
+        if given_state_dist is None:
+            given_state_dist = self.state_dist(
+                t_stage=t_stage,
+                mode=mode,
+            )
+
+        return self.early.marginalize(
+            involvement=involvement,
+            given_state_dist=given_state_dist,
+        )
 
     def risk(
         self,
@@ -414,22 +596,15 @@ class BoostUnilateral(
 
         See :py:meth:`.models.Unilateral.risk` for more information.
         """
-        if t_stage == "early":
-            return self.early.risk(
-                involvement=involvement,
-                given_params=given_params,
-                given_state_dist=given_state_dist,
-                given_diagnosis=given_diagnosis,
-                t_stage=t_stage,
-                mode=mode,
-            )
-        if t_stage == "late":
-            return self.late.risk(
-                involvement=involvement,
-                given_params=given_params,
-                given_state_dist=given_state_dist,
-                given_diagnosis=given_diagnosis,
-                t_stage=t_stage,
-                mode=mode,
-            )
-        raise ValueError("T-stage needs to be early or late.")
+        posterior_state_dist = self.posterior_state_dist(
+            given_params=given_params,
+            given_state_dist=given_state_dist,
+            given_diagnosis=given_diagnosis,
+            t_stage=t_stage,
+            mode=mode,
+        )
+
+        return self.marginalize(
+            involvement=involvement,
+            given_state_dist=posterior_state_dist,
+        )
