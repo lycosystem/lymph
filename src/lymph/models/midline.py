@@ -23,8 +23,50 @@ CENT_COL_NEW = ("tumor", "core", "central")
 MAP_EXT_COL = ("_model", "core", "extension")
 MAP_CENT_COL = ("_model", "core", "central")
 MAP_T_COL = ("_model", "core", "t_stage")
-MAP_COH_COL = ("tumor", "core", "ext_coh")
-DIST_MID_COL = ("tumor", "core", "dist_to_midline")
+MAP_COH_COL = ("tumor", "algo", "ext_coh")
+DIST_MID_COL = ("tumor", "algo", "extension_dist")
+
+
+def parse_cohorts(
+    cohorts: Mapping[int, bool] | Sequence[bool] | None,
+) -> tuple[bool, ...]:
+    """Turn the ``cohorts`` argument into a tuple of midline extension statuses.
+
+    The position in the returned tuple is the cohort id. Cohorts are ordered from
+    most lateralised to most extended: cohort 0 is the lateralised reference, and
+    all lateralised cohorts come before all extended ones.
+
+    >>> parse_cohorts(None)
+    (False, True)
+    >>> parse_cohorts({1: True, 0: False, 2: True})
+    (False, True, True)
+    >>> parse_cohorts([False, False, True])
+    (False, False, True)
+    """
+    if cohorts is None:
+        return (False, True)  # backwards compatible: one noext, one ext cohort
+
+    if isinstance(cohorts, Mapping):
+        ids = list(cohorts.keys())
+        if sorted(ids) != list(range(len(ids))):
+            raise ValueError(
+                f"Cohort ids must be 0, 1, ..., N-1 without gaps, got {ids}.",
+            )
+        cohorts = [cohorts[cid] for cid in range(len(ids))]
+
+    statuses = tuple(cohorts)
+    if not all(isinstance(s, bool | np.bool_) for s in statuses):
+        raise TypeError(f"Cohort statuses must be bools, got {statuses}.")
+
+    statuses = tuple(bool(s) for s in statuses)
+    # sorted() puts all False before all True; the set check ensures both exist
+    if list(statuses) != sorted(statuses) or set(statuses) != {False, True}:
+        raise ValueError(
+            "Cohorts must be ordered with all lateralised (False) cohorts before "
+            f"all extended (True) ones, and contain at least one of each: {statuses}.",
+        )
+
+    return statuses
 
 
 class Midline(
@@ -104,9 +146,9 @@ class Midline(
             a central/symmetric tumor, and (possibly) one for the case of unknown
             midline extension status.
         """
-        is_symmetric = is_symmetric or {}
-        is_symmetric["tumor_spread"] = is_symmetric.get("tumor_spread", False)
-        is_symmetric["lnl_spread"] = is_symmetric.get("lnl_spread", True)
+        is_symmetric = dict(is_symmetric or {})
+        is_symmetric.setdefault("tumor_spread", False)
+        is_symmetric.setdefault("lnl_spread", True)
 
         if is_symmetric["tumor_spread"]:
             raise ValueError(
@@ -114,73 +156,6 @@ class Midline(
                 "Bilateral class.",
             )
         self.is_symmetric = is_symmetric
-
-        # Initialize unified cohort model storage
-        self._cohort_models = {}
-        self._cohort_midext_status = {}
-
-        # Cohort handling: accept only a Mapping[int, bool] or None. If None, default
-        # to a single no-extension and a single extension cohort (0:False, 1:True).
-        if cohorts is None:
-            cohort_map = {0: False, 1: True}
-        else:
-            if not isinstance(cohorts, Mapping):
-                raise TypeError(
-                    "When using cohorts, `cohorts` must be a Mapping[int, bool].",
-                )
-            cohort_map = dict(cohorts)
-
-        # Validate keys/values and coerce values to bool
-        for k in list(cohort_map.keys()):
-            if not isinstance(k, int):
-                raise TypeError(f"Cohort id {k!r} must be an int.")
-            cohort_map[k] = bool(cohort_map[k])
-
-        # Ensure a no-extension cohort exists (id 0) unless explicitly omitted
-        cohort_map.setdefault(0, False)
-
-        cohort_ids = sorted(cohort_map.keys())
-        # For backwards compat, `self.cohorts` contains extension cohort ids only
-        # self.cohorts = [cid for cid, is_ext in cohort_map.items() if is_ext]
-        self.cohorts = cohort_ids[1:]  # keep all cohorts the tumor can "grow into"
-
-        for cid in cohort_ids:
-            self._cohort_models[cid] = models.Bilateral(
-                graph_dict=graph_dict,
-                uni_kwargs=uni_kwargs,
-                is_symmetric=self.is_symmetric,
-            )
-            self._cohort_midext_status[cid] = bool(cohort_map.get(cid, False))
-
-        # # Build ext_children dict for Composite classes
-        # ext_children = {
-        #     f"cohort{cid}": model
-        #     for cid, model in self._cohort_models.items()
-        #     if self._cohort_midext_status[cid]
-        # }
-
-        # # Build noext_children dict for Composite classes
-        # noext_children = {
-        #     f"cohort{cid}": model
-        #     for cid, model in self._cohort_models.items()
-        #     if not self._cohort_midext_status[cid]
-        # }
-        # Build children dict for composite classes
-        children = {f"cohort{cid}": model for cid, model in self._cohort_models.items()}
-
-        # add models to marginalise over unknown cohorts
-        # TODO: maybe just use those if mutliple cohorts?
-        self.ext = models.Bilateral(
-            graph_dict=graph_dict,
-            uni_kwargs=uni_kwargs,
-            is_symmetric=self.is_symmetric,
-        )
-        self.noext = models.Bilateral(
-            graph_dict=graph_dict,
-            uni_kwargs=uni_kwargs,
-            is_symmetric=self.is_symmetric,
-        )
-        children.update({"ext": self.ext, "noext": self.noext})
 
         self.use_midext_evo = use_midext_evo
         if self.use_midext_evo and use_central:
@@ -190,6 +165,22 @@ class Midline(
                 # Actually, this shouldn't be too hard, but we still need to think
                 # about it for a bit.
             )
+
+        # Initialize unified cohort model storage
+        self._cohort_midext = parse_cohorts(cohorts)
+        self._cohort_models = [
+            models.Bilateral(
+                graph_dict=graph_dict,
+                uni_kwargs=uni_kwargs,
+                is_symmetric=self.is_symmetric,
+            )
+            for _ in self._cohort_midext
+        ]
+
+        # Build children dict for composite classes
+        children = {
+            f"cohort{cid}": model for cid, model in enumerate(self._cohort_models)
+        }
 
         other_children = {}
         if use_central:
@@ -203,6 +194,7 @@ class Midline(
             )
             other_children["central"] = self.central
 
+        self._unknown_cohort: dict[bool, models.Bilateral] = {}
         if marginalize_unknown:
             self._unknown = models.Bilateral(
                 graph_dict=graph_dict,
@@ -210,21 +202,19 @@ class Midline(
                 is_symmetric=self.is_symmetric,
             )
             other_children["unknown"] = self.unknown
-        if use_mixing:
-            # if self.use_cohorts:
-            #     self.mixing_params = dict.fromkeys(self.cohorts, 0.5)
-            # else:
-            #     self.mixing_param = 0.5
-            self.mixing_params = dict.fromkeys(
-                self.cohorts,
-                1 / (len(self.cohorts) + 1),
-            )
 
-        # if self.use_cohorts:
-        #     self.midext_probs = dict.fromkeys(self.cohorts, 0.2)
-        # else:
-        #     self.midext_prob = 0.5
-        self._midext_probs = dict.fromkeys(self.cohorts, 1 / (len(self.cohorts) + 1))
+            for midext, cids in [
+                (False, self.lateral_cohorts),
+                (True, self.ext_cohorts),
+            ]:
+                if len(cids) > 1:
+                    self._unknown_cohort[midext] = models.Bilateral(
+                        graph_dict=graph_dict,
+                        uni_kwargs=uni_kwargs,
+                        is_symmetric=self.is_symmetric,
+                    )
+                    key = "unknown_cohort_ext" if midext else "unknown_cohort_noext"
+                    other_children[key] = self._unknown_cohort[midext]
 
         diagnosis_times.Composite.__init__(
             self,
@@ -239,6 +229,11 @@ class Midline(
             modality_children={**children, **other_children},
             is_modality_leaf=False,
         )
+
+        if use_mixing:
+            self.mixing_params = 1 / self.num_cohorts
+
+        self.midext_probs = 1 / self.num_cohorts
 
         if named_params is not None:
             self.named_params = named_params
@@ -269,115 +264,137 @@ class Midline(
         return self.ext.is_trinary
 
     @property
-    def midext_prob(self) -> float:
-        """Return the probability of midline extension."""
-        if hasattr(self, "_midext_probs"):
-            values = set(self._midext_probs.values())
+    def noext(self) -> models.Bilateral:
+        """The reference lateralised cohort model."""
+        return self._cohort_models[0]
 
-            if len(values) != 1:
-                warnings.warn(
-                    "Multiple cohorts with different midline extnsion probabilities."
-                    " Will return probability of first cohort.",
-                )
-            return next(iter(values))
-        return 0.0
+    @property
+    def ext(self) -> models.Bilateral:
+        """The extended cohort model. Only defined if there is exactly one."""
+        if len(self.ext_cohorts) != 1:
+            raise AttributeError(
+                "`ext` is ambiguous with more than one extended cohort.",
+            )
+        return self._cohort_models[self.ext_cohorts[0]]
+
+    @property
+    def midext_prob(self) -> float:
+        """Return the probability of midline extension (for one extended cohort)."""
+        if self.num_cohorts != 2:
+            raise AttributeError(
+                "`midext_prob` is ambiguous with more than two cohorts; "
+                "use `midext_probs` instead.",
+            )
+        return self._midext_probs[1]
 
     @midext_prob.setter
     def midext_prob(self, value: float) -> None:
-        """Set the probability of midline extension."""
-        if value is not None and not 0.0 <= value <= 1.0:
-            raise ValueError("The midline extension prob must be in the range [0, 1].")
-        self._midext_probs = dict.fromkeys(self.cohorts, value)
+        """Set the probability of midline extension (only for one extended cohort)."""
+        if self.num_cohorts != 2:
+            raise AttributeError(
+                "`midext_prob` is ambiguous with more than two cohorts; "
+                "use `midext_probs` instead.",
+            )
+        self.midext_probs = {1: value}
 
     @property
-    def midext_probs(self) -> float:
-        """Return the probability of midline extension."""
-        if hasattr(self, "_midext_probs"):
-            return self._midext_probs.copy()
-        return 0.0
+    def midext_probs(self) -> dict[int, float]:
+        """Return the probabilities of midline extension.
+
+        Without midline evolution this denotes the probability of belonging to each
+        cohort. With midline evolution, this denotes the probability of the tumor
+        growing from one cohort to the next one within a timestep.
+        """
+        return self._midext_probs.copy()
 
     def _validate_midext_probs(self, value: dict[int, float]) -> None:
-        """Validate midline extension probabilities."""
-        if not set(value.keys()).issubset(set(self.cohorts)):
-            extra_keys = set(value.keys()) - set(self.cohorts)
-            raise ValueError(f"Found invalid cohort keys: {extra_keys}")
-
+        """Raise a ``ValueError`` if ``value`` is not valid for midext probs."""
+        if set(value) != set(self.mixed_cohorts):
+            raise ValueError(
+                f"Midext probs needed exactly for cohorts {list(self.mixed_cohorts)}, "
+                f"got {sorted(value)}.",
+            )
         if not all(0.0 <= v <= 1.0 for v in value.values()):
             raise ValueError(
                 "All midline extension probs must be in the range [0, 1].",
             )
-        if not self.use_midext_evo:
-            if sum(value.values()) > 1.0:
-                raise ValueError(
-                    "The sum of midline extension probs cannot exceed 1.0"
-                    f" (got {sum(value.values())}).",
-                )
-
-        return  # Validation passed successfully
+        if not self.use_midext_evo and sum(value.values()) > 1.0:
+            raise ValueError(
+                f"The sum of midline extension probs cannot exceed 1.0, (got {value}).",
+            )
 
     @midext_probs.setter
-    def midext_probs(self, value: int | float | dict[int, float]) -> None:
-        """Set the probability of midline extension."""
-        # self._validate_midext_probs(value) -> need to move to the end
-        new_probs = self._midext_probs.copy()
+    def midext_probs(self, value: float | Mapping[int, float]) -> None:
+        """Set the probability of midline extension.
 
-        if isinstance(value, (float | int)):
-            new_probs = {cid: float(value) for cid in self.cohorts}
+        A single number sets all cohorts to that value. A mapping only updates the given
+        cohorts and keeps the others, so individual values can be set.
+        """
+        if isinstance(value, Mapping):
+            new_probs = {**self._midext_probs, **value}
         else:
-            if not set(value.keys()).issubset(set(self.cohorts)):
-                extra_keys = set(value.keys()) - set(self.cohorts)
-                raise ValueError(f"Found invalid cohort keys: {extra_keys}")
-            new_probs.update(value)
+            new_probs = dict.fromkeys(self.mixed_cohorts, float(value))
 
         self._validate_midext_probs(new_probs)
         self._midext_probs = new_probs
 
-    def set_midext_prob(self, cohort: int, value: float) -> None:
-        """Set midline extension probability for a specific cohort."""
-        if not hasattr(self, "_midext_probs"):
-            raise RuntimeError("midext_probs not initialized")
-        if cohort not in self._midext_probs:
-            raise ValueError(f"Cohort {cohort} not in valid cohorts")
-
-        # Create updated dict and validate as a whole
-        updated = dict(self._midext_probs)
-        updated[cohort] = value
-        self._validate_midext_probs(updated)
-
-        self._midext_probs = updated
-
     @property
     def mixing_param(self) -> float | None:
-        """Return the mixing parameter."""
-        if hasattr(self, "_mixing_param"):
-            return self._mixing_param
-        return None
+        """Return the mixing parameter (only for one extended cohort)."""
+        if not self.use_mixing:
+            return None
+        if self.num_cohorts != 2:
+            raise AttributeError(
+                "`mixing_param` is ambiguous with more than two cohorts; "
+                "use `mixing_params` instead.",
+            )
+        return self._mixing_params[1]
 
     @mixing_param.setter
     def mixing_param(self, value: float) -> None:
-        """Set the mixing parameter."""
-        if value is not None and not 0.0 <= value <= 1.0:
-            raise ValueError("The mixing parameter must be in the range [0, 1].")
-        self._mixing_param = value
+        """Set the mixing parameter (only for one extended cohort)."""
+        if self.num_cohorts != 2:
+            raise AttributeError(
+                "`mixing_param` is ambiguous with more than two cohorts, "
+                "use `mixing_params` instead.",
+            )
+        self.mixing_params = {1: value}
 
     @property
-    def mixing_params(self) -> float | None:
-        """Return the mixing parameter."""
+    def mixing_params(self) -> dict[int, float]:
+        """Return the mixing parameter of each cohort."""
         if hasattr(self, "_mixing_params"):
-            return self._mixing_params
+            return self._mixing_params.copy()
         return {}
 
-    @mixing_params.setter
-    def mixing_params(self, value: dict) -> None:
-        """Set the mixing parameter."""
+    def _validate_mixing_params(self, value: dict[int, float]) -> None:
+        """Raise a ``ValueError`` if ``value`` is not valid for mixing params."""
+        if set(value) != set(self.mixed_cohorts):
+            raise ValueError(
+                f"Mixing params needed exactly for cohorts {list(self.mixed_cohorts)}, "
+                f"got {sorted(value)}.",
+            )
         if not all(0.0 <= v <= 1.0 for v in value.values()):
-            raise ValueError("The mixing parameter must be in the range [0, 1].")
-        self._mixing_params = value
+            raise ValueError("The mixing parameters must be in the range [0, 1].")
+
+    @mixing_params.setter
+    def mixing_params(self, value: float | Mapping[int, float]) -> None:
+        """Set the mixing parameters.
+
+        A single number sets all cohorts to that value. A mapping only updates the given
+        cohorts and keeps the others, so individual values can be set.
+        """
+        if isinstance(value, Mapping):
+            new_params = {**self._mixing_params, **value}
+        else:
+            new_params = dict.fromkeys(self.mixed_cohorts, float(value))
+        self._validate_mixing_params(new_params)
+        self._mixing_params = new_params
 
     @property
     def use_mixing(self) -> bool:
         """Return whether the model uses a mixing parameter."""
-        return hasattr(self, "_mixing_param") or hasattr(self, "_mixing_params")
+        return hasattr(self, "_mixing_params")
 
     @property
     def use_central(self) -> bool:
@@ -404,6 +421,31 @@ class Midline(
         raise AttributeError(
             "This instance does not marginalize over unknown midline extension.",
         )
+
+    @property
+    def num_cohorts(self) -> int:
+        """Number of cohorts."""
+        return len(self._cohort_midext)
+
+    @property
+    def cohorts(self) -> range:
+        """All cohort ids, from most lateralised to most extended."""
+        return range(self.num_cohorts)
+
+    @property
+    def mixed_cohorts(self) -> range:
+        """Cohorts whose params are derived from the reference cohort 0."""
+        return range(1, self.num_cohorts)
+
+    @property
+    def lateral_cohorts(self) -> list[int]:
+        """Lateralised cohorts."""
+        return [cid for cid, ext in enumerate(self._cohort_midext) if not ext]
+
+    @property
+    def ext_cohorts(self) -> list[int]:
+        """Extended cohorts."""
+        return [cid for cid, ext in enumerate(self._cohort_midext) if ext]
 
     def get_tumor_spread_params(
         self,
