@@ -447,6 +447,20 @@ class Midline(
         """Extended cohorts."""
         return [cid for cid, ext in enumerate(self._cohort_midext) if ext]
 
+    def _mixing_key(self, cid: int) -> str:
+        """Name of the mixing parameter of cohort ``cid``."""
+        return "mixing" if self.num_cohorts == 2 else f"mixing{cid}"
+
+    def _midext_key(self, cid: int) -> str:
+        """Name of the midline extension probability of cohort ``cid``."""
+        return "midext_prob" if self.num_cohorts == 2 else f"midext_prob{cid}"
+
+    def _cohort_prefix(self, cid: int) -> str:
+        """Prefix of the contra tumor spread of cohort ``cid`` without mixing."""
+        if self.num_cohorts == 2:
+            return "ext" if cid == 1 else "noext"
+        return f"cohort{cid}"
+
     def get_tumor_spread_params(
         self,
         as_dict: bool = True,
@@ -468,12 +482,13 @@ class Midline(
             params["contra"] = self._cohort_models[0].contra.get_tumor_spread_params(
                 as_flat=as_flat,
             )
-            for coh in self.cohorts:
-                params[f"mixing{coh}"] = self.mixing_params[coh]
+            mixing_params = self.mixing_params
+            for cid in self.mixed_cohorts:
+                params[self._mixing_key(cid)] = mixing_params[cid]
 
         else:
-            for cid, model in self._cohort_models.items():
-                params[f"cohort{cid}"] = {
+            for cid, model in enumerate(self._cohort_models):
+                params[self._cohort_prefix(cid)] = {
                     "contra": model.contra.get_tumor_spread_params(as_flat=as_flat),
                 }
 
@@ -493,34 +508,23 @@ class Midline(
         may contain only one set of spread parameters (if ``True``) or one for the ipsi-
         and one for the contralateral side (if ``False``).
         """
-        # if self.use_cohorts:
-        #     ext_lnl_params = self.ext_coh[1].get_lnl_spread_params(as_flat=False)
-        # else:
-        #     ext_lnl_params = self.ext.get_lnl_spread_params(as_flat=False)
-        # noext_lnl_params = self.noext.get_lnl_spread_params(as_flat=False)
-
-        # if ext_lnl_params != noext_lnl_params:
-        #     warnings.warn(
-        #         "LNL spread params not synched between ext and noext models. "
-        #         "Returning the ext params.",
-        #     )
         lnl_params = self._cohort_models[0].get_lnl_spread_params(as_flat=False)
 
         if not all(
             self._cohort_models[cid].get_lnl_spread_params(as_flat=False) == lnl_params
-            for cid in self.cohorts
+            for cid in self.mixed_cohorts
         ):
             warnings.warn(
-                "LNL spread params not synched between ext and noext models. "
-                "Returning the ext params.",
+                "LNL spread params not synched between ext and noext or cohort models. "
+                "Returning the noext / reference model params.",
             )
 
         if self.use_central:
             central_lnl_params = self.central.get_lnl_spread_params(as_flat=False)
             if central_lnl_params != lnl_params:
                 warnings.warn(
-                    "LNL spread params not synched between central and ext models. "
-                    "Returning the ext params.",
+                    "LNL spread params not synched between central and noext models. "
+                    "Returning the noext / reference params.",
                 )
 
         if as_flat or not as_dict:
@@ -569,11 +573,11 @@ class Midline(
         params = {}
         params.update(self.get_spread_params(as_flat=as_flat))
         params.update(self.get_distribution_params(as_flat=as_flat))
-        # if self.use_cohorts:
-        #     params["midext_probs"] = self.midext_probs
-        # else:
-        #     params["midext_prob"] = self.midext_prob
-        params["midext_probs"] = self.midext_probs
+
+        midext_probs = self.midext_probs
+        for cid in self.mixed_cohorts:
+            params[self._midext_key(cid)] = midext_probs[cid]
+
         if as_flat or not as_dict:
             params = utils.flatten(params)
 
@@ -593,13 +597,7 @@ class Midline(
         :py:meth:`get_tumor_spread_params` method returns for an insight in what you
         can provide.
         """
-        # Unflatten kwargs based on whether we're in cohort mode
-        # if self.use_cohorts:
-        #     cohort_ext_keys = [f"ext{coh}" for coh in self.cohorts]
-        #     expected_keys = ["ipsi", "noext"] + cohort_ext_keys + ["contra"]
-        # else:
-        #     expected_keys = ["ipsi", "noext", "ext", "contra"]
-        cohort_keys = [f"cohort{cid}" for cid in self._cohort_models.keys()]
+        cohort_keys = [self._cohort_prefix(cid) for cid in self.cohorts]
         expected_keys = ["ipsi", "contra"] + cohort_keys
 
         kwargs, global_kwargs = utils.unflatten_and_split(
@@ -613,7 +611,7 @@ class Midline(
         if self.use_central:
             self.central.set_tumor_spread_params(*args, **ipsi_kwargs)
 
-        for cid in self.cohorts:
+        for cid in self.mixed_cohorts:
             self._cohort_models[cid].ipsi.set_tumor_spread_params(*args, **ipsi_kwargs)
         args = self._cohort_models[0].ipsi.set_tumor_spread_params(*args, **ipsi_kwargs)
 
@@ -625,35 +623,34 @@ class Midline(
                 *args,
                 **contra_kwargs,
             )
-            for cid in self.cohorts:
-                mixing_param, args = utils.popfirst(args)
-                mixing_param = (
-                    global_kwargs.get(f"mixing{cid}", mixing_param)
-                    or self.mixing_params[cid]
-                )
-                self.mixing_params[cid] = global_kwargs.get(
-                    f"mixing{cid}",
-                    mixing_param,
-                )
 
-                ext_contra_kwargs = {}
-                for (key, ipsi_param), noext_contra_param in zip(
-                    self._cohort_models[0].ipsi.get_tumor_spread_params().items(),
-                    self._cohort_models[0].contra.get_tumor_spread_params().values(),
-                    strict=False,
-                ):
-                    ext_contra_kwargs[key] = (
-                        self.mixing_params[cid] * ipsi_param
-                        + (1.0 - self.mixing_params[cid]) * noext_contra_param
-                    )
+            new_mixing = {}
+            for cid in self.mixed_cohorts:
+                value, args = utils.popfirst(args)
+                value = global_kwargs.get(self._mixing_key(cid), value)
+                if value is not None:
+                    new_mixing[cid] = value
+            if new_mixing:
+                self.mixing_params = new_mixing
+
+            ipsi = self._cohort_models[0].ipsi.get_tumor_spread_params()
+            contra = self._cohort_models[0].contra.get_tumor_spread_params()
+            for cid, alpha in self.mixing_params.items():
+                mixed = {
+                    key: alpha * ipsi[key] + (1 - alpha) * contra[key] for key in ipsi
+                }
                 self._cohort_models[cid].contra.set_tumor_spread_params(
-                    **ext_contra_kwargs,
+                    **mixed,
                 )
 
         else:
-            for cid, model in self._cohort_models.items():
+            for cid, model in enumerate(self._cohort_models):
+                cohort_kwargs, _ = utils.unflatten_and_split(
+                    kwargs.get(self._cohort_prefix(cid), {}),
+                    expected_keys=["contra"],
+                )
                 contra_kwargs = global_kwargs.copy()
-                contra_kwargs.update(kwargs.get(f"cohort{cid}", {}).get("contra", {}))
+                contra_kwargs.update(cohort_kwargs.get("contra", {}))
                 args = model.contra.set_tumor_spread_params(
                     *args,
                     **contra_kwargs,
@@ -669,7 +666,7 @@ class Midline(
         instances of :py:class:`~.Bilateral` depending on the value of the
         ``use_central`` attribute.
         """
-        cohort_keys = [f"cohort{cid}" for cid in self._cohort_models.keys()]
+        cohort_keys = [self._cohort_prefix(cid) for cid in self.cohorts]
         expected_keys = ["ipsi", "contra"] + cohort_keys
 
         kwargs, global_kwargs = utils.unflatten_and_split(
@@ -687,7 +684,7 @@ class Midline(
                 self.central.contra.set_lnl_spread_params(*args, **global_kwargs)
 
             # Apply to all models
-            for cid in self.cohorts:
+            for cid in self.mixed_cohorts:
                 self._cohort_models[cid].ipsi.set_lnl_spread_params(
                     *args,
                     **global_kwargs,
@@ -708,7 +705,7 @@ class Midline(
                 self.central.ipsi.set_lnl_spread_params(*args, **ipsi_kwargs)
 
             # Apply ipsilateral params to all models
-            for cid in self.cohorts:
+            for cid in self.mixed_cohorts:
                 self._cohort_models[cid].ipsi.set_lnl_spread_params(
                     *args,
                     **ipsi_kwargs,
@@ -724,12 +721,12 @@ class Midline(
             if self.use_central:
                 self.central.contra.set_lnl_spread_params(*args, **contra_kwargs)
 
-            for cid in self.cohorts:
+            for cid in self.mixed_cohorts:
                 self._cohort_models[cid].contra.set_lnl_spread_params(
                     *args,
                     **contra_kwargs,
                 )
-            args = self._cohort_models[0].contra_set_lnl_spread_params(
+            args = self._cohort_models[0].contra.set_lnl_spread_params(
                 *args,
                 **contra_kwargs,
             )
@@ -750,87 +747,30 @@ class Midline(
 
         Combines the calls to :py:meth:`.set_spread_params` and
         :py:meth:`.set_distribution_params`. Additionally, it sets the probabilities
-        for midline extension. Note that these parameter are always the last ones that
+        for midline extension. Note that these parameters are always the last ones that
         are set after the spread and distribution parameters.
         """
-        num_cohorts = len(self.cohorts)
-        midext_prob_idx = self.get_num_dims() - num_cohorts
+        # take the midext probs out of kwargs, so they aren't passed to the children
+        midext_kwargs = {
+            cid: kwargs.pop(self._midext_key(cid))
+            for cid in self.mixed_cohorts
+            if self._midext_key(cid) in kwargs
+        }
 
-        before = args
-        after = ()
-        midext_args = None
+        args = self.set_spread_params(*args, **kwargs)
+        args = self.set_distribution_params(*args, **kwargs)
 
-        if len(args) > midext_prob_idx:
-            before = args[:midext_prob_idx]
-            rem = args[midext_prob_idx:]
+        new_midext_probs = {}
+        for cid in self.mixed_cohorts:
+            value, args = utils.popfirst(args)
+            if value is not None:
+                new_midext_probs[cid] = value
+        new_midext_probs.update(midext_kwargs)  # names override positions
 
-            if len(rem) >= num_cohorts:
-                midext_args = rem[:num_cohorts]
-                after = rem[num_cohorts:]
-            elif len(rem) == 1:
-                midext_args = rem
-                after = ()
+        if new_midext_probs:
+            self.midext_probs = new_midext_probs
 
-        update_midext_probs = {}
-        for cid in self.cohorts:
-            key = f"midext_probs_{cid}"
-            if key in kwargs:
-                update_midext_probs[cid] = kwargs.pop(key)
-                # self.set_midext_prob(cid, kwargs.pop(key))
-        self.midext_probs = update_midext_probs
-
-        if "midext_probs" in kwargs:
-            self.midext_probs = kwargs.pop("midext_probs")
-
-        elif "midext_prob" in kwargs:
-            self.midext_probs = kwargs.pop("midext_prob")
-
-        else:
-            if midext_args is not None:
-                if len(midext_args) == 1:
-                    self.midext_probs = midext_args[0]
-                elif len(midext_args) == num_cohorts:
-                    self.midext_probs = dict(
-                        zip(self.cohorts, midext_args, strict=False),
-                    )
-
-        args = self.set_spread_params(*(before + after), **kwargs)
-        return self.set_distribution_params(*args, **kwargs)
-
-    # last_param_idx = self.get_num_dims() - 1
-    # before, last, after = utils.popat(args, idx=last_param_idx)
-    # # if self.use_cohorts:
-    # #     if kwargs.get("midext_probs", last) is not None:
-    # #         self.midext_probs = kwargs.get("midext_probs", last)
-    # # Extract and reconstruct flattened midext_probs_* keys
-    # midext_probs_dict = self._midext_probs.copy()
-    # for cid in self.cohorts:
-    #     key = f"midext_probs_{cid}"
-    #     if key in kwargs:
-    #         midext_probs_dict[cid] = kwargs.pop(key)
-
-    # # If no flattened keys found, try the singular "midext_probs" key
-    # # if not midext_probs_dict and "midext_probs" in kwargs:
-    # #     midext_probs_dict = kwargs.pop("midext_probs")
-    # if "midext_probs" in kwargs:
-    #     midext_probs_dict.update(kwargs.pop("midext_probs"))
-
-    # # If we got any values, validate and set
-    # if midext_probs_dict:
-    #     if isinstance(midext_probs_dict, dict):
-    #         self._validate_midext_probs(midext_probs_dict)
-    #         self._midext_probs = midext_probs_dict
-    #     else:
-    #         if last is not None:
-    #             # For now, skip setting if we can't unambiguously reconstruct
-    #             pass
-    #         args = before + after
-    # # else:
-    # #     if kwargs.get("midext_prob", last) is not None:
-    # #         self.midext_prob = kwargs.get("midext_prob", last)
-
-    # args = self.set_spread_params(*(before + after), **kwargs)
-    # return self.set_distribution_params(*args, **kwargs)
+        return args
 
     def load_patient_data(
         self,
