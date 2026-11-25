@@ -23,8 +23,9 @@ CENT_COL_NEW = ("tumor", "core", "central")
 MAP_EXT_COL = ("_model", "core", "extension")
 MAP_CENT_COL = ("_model", "core", "central")
 MAP_T_COL = ("_model", "core", "t_stage")
-MAP_COH_COL = ("tumor", "algo", "ext_coh")
+MAP_COHORT_COL = ("_model", "core", "cohort")
 EXT_DIST_COL = ("tumor", "algo", "extension_dist")
+COHORT_COL = ("tumor", "algo", "cohort")
 
 
 def parse_cohorts(
@@ -238,6 +239,8 @@ class Midline(
         if named_params is not None:
             self.named_params = named_params
 
+        self._loaded: dict[str, tuple[models.Bilateral, np.ndarray]] = {}
+
     @classmethod
     def binary(cls, *args, **kwargs) -> Midline:
         """Create a binary model."""
@@ -255,13 +258,14 @@ class Midline(
     @property
     def is_trinary(self) -> bool:
         """Return whether the model is trinary."""
-        if self.ext.is_trinary != self.noext.is_trinary:
-            raise ValueError("The bilateral models must have the same trinary status.")
+        children = [model for model, _ in self._data_targets().values()]
+        if self.use_central:
+            children.append(self.central)
 
-        if self.use_central and self.central.is_trinary != self.ext.is_trinary:
+        statuses = {child.is_trinary for child in children}
+        if len(statuses) > 1:
             raise ValueError("The bilateral models must have the same trinary status.")
-
-        return self.ext.is_trinary
+        return statuses.pop()
 
     @property
     def noext(self) -> models.Bilateral:
@@ -460,6 +464,31 @@ class Midline(
         if self.num_cohorts == 2:
             return "ext" if cid == 1 else "noext"
         return f"cohort{cid}"
+
+    def _data_targets(self) -> dict[str, tuple[models.Bilateral, list[int]]]:
+        targets = {
+            f"cohort{cid}": (m, [cid]) for cid, m in enumerate(self._cohort_models)
+        }
+        if self.marginalize_unknown:
+            targets["unknown"] = (self.unknown, list(self.cohorts))
+            for status, model in self._unknown_cohort.items():
+                cids = self.ext_cohorts if status else self.lateral_cohorts
+                key = "unknown_cohort_ext" if status else "unknown_cohort_noext"
+                targets[key] = (model, cids)
+        return targets
+
+    @property
+    def patient_data(self) -> pd.DataFrame:
+        """Dataset with an additional column denoting corresponding models."""
+        if not self._loaded:
+            raise AttributeError("No patient data loaded yet.")
+        frames = []
+        for name, (model, rows) in self._loaded.items():
+            frame = model.patient_data.copy()
+            frame.index = rows
+            frame[MAP_COHORT_COL] = name  # e.g. ("_model", "core", "cohort")
+            frames.append(frame)
+        return pd.concat(frames).sort_index()
 
     def get_tumor_spread_params(
         self,
@@ -779,14 +808,19 @@ class Midline(
     ) -> pd.Series:
         """Return for each patient the name of the child model it is loaded into."""
         midext = utils.get_item(patient_data, [EXT_COL_NEW, EXT_COL_OLD])
+        cohort = pd.Series(np.nan, index=patient_data.index)
 
-        if cohort_bins is None:
-            if self.num_cohorts > 2:
+        if COHORT_COL in patient_data.columns:
+            given = patient_data[COHORT_COL]
+            invalid = given.notna() & ~given.isin(self.cohorts)
+            if invalid.any():
                 raise ValueError(
-                    "With more than two cohorts, `cohort_bins` are required.",
+                    f"Column {COHORT_COL} must contain one "
+                    f"of {list(self.cohorts)} of Nan.",
                 )
-            cohort = midext.map({False: 0, True: 1})  # NaN stays NaN
-        else:
+            cohort = given.astype(float)
+
+        if cohort_bins is not None:
             if EXT_DIST_COL not in patient_data.columns:
                 raise ValueError(
                     f"`cohort_bins` given, but column {EXT_DIST_COL} is missing.",
@@ -795,18 +829,26 @@ class Midline(
                 raise ValueError(
                     f"{len(cohort_bins) - 1} bins for {self.num_cohorts} cohorts.",
                 )
-            cohort = pd.cut(
+            binned = pd.cut(
                 patient_data[EXT_DIST_COL],
                 bins=cohort_bins,
                 labels=list(self.cohorts),
                 include_lowest=True,
             ).astype(float)
 
+            cohort = cohort.fillna(binned)
+
+        elif self.num_cohorts > 2 and COHORT_COL not in patient_data.columns:
+            raise ValueError(
+                f"With more than two cohorts, `cohort_bins` or column {COHORT_COL} "
+                "are required.",
+            )
+
         route = pd.Series("unknown", index=patient_data.index)  # extension unknown
         known = cohort.notna()
         route[known] = "cohort" + cohort[known].astype(int).astype(str)
 
-        # extension known, but cohort not (distance missing)
+        # extension known, but cohort not (distance or cohort column entry missing)
         for status, cids in [(False, self.lateral_cohorts), (True, self.ext_cohorts)]:
             no_cohort = ~known & (midext == status)
             if len(cids) == 1:
@@ -829,25 +871,19 @@ class Midline(
         cohort_bins: Sequence[float] | None = None,
     ) -> None:
         """Load patient data into the model."""
-        if self.use_central and cohort_bins is not None:
-            raise NotImplementedError(
-                "Central model not yet supported with cohort bins.",
-            )
-
         route = self._route_patients(patient_data, cohort_bins)
 
-        targets = {f"cohort{cid}": m for cid, m in enumerate(self._cohort_models)}
+        data_models = {name: model for name, (model, _) in self._data_targets().items()}
         if self.use_central:
-            targets["central"] = self.central
-        if self.marginalize_unknown:
-            targets["unknown"] = self.unknown
-            for status, model in self._unknown_cohort.items():
-                targets[f"unknown_cohort_{'ext' if status else 'noext'}"] = model
+            data_models["central"] = self.central
 
-        for name, model in targets.items():
-            model.load_patient_data(patient_data[route == name], mapping)
+        self._loaded = {}
+        for name, model in data_models.items():
+            selected = (route == name).to_numpy()
+            model.load_patient_data(patient_data[selected], mapping)
+            self._loaded[name] = (model, np.flatnonzero(selected))
 
-        discarded = ~route.isin(targets)
+        discarded = ~route.isin(data_models)
         if discarded.any():
             warnings.warn(f"Discarding {discarded.sum()} patients with unknown cohort.")
 
@@ -879,21 +915,28 @@ class Midline(
 
     def contra_state_dist_evo(
         self,
-        unmodified_midext_prob: bool = False,
+        conditional: bool = False,
     ) -> dict[int, np.ndarray]:
         """Evolve contra side as mixture of with & without midline extension."""
-        # TODO: deal with unmodified midext_prob
+        if conditional and self.use_midext_evo:
+            raise NotImplementedError(
+                "Unweighted (per-cohort) contra evolution is only defined "
+                "without midline extension evolution.",
+            )
         p = self.midext_probs
-        last = self.num_cohorts - 1
-        coh0_evo = self._cohort_models[0].contra.state_dist_evo()
 
         if not self.use_midext_evo:
-            weights = {0: 1.0 - sum(p.values()), **p}
-            return {
-                cid: weights[cid] * self._cohort_models[cid].contra.state_dist_evo()
-                for cid in self.cohorts
+            evos = {
+                cid: m.contra.state_dist_evo()
+                for cid, m in enumerate(self._cohort_models)
             }
+            if conditional:
+                return evos
+            weights = {0: 1.0 - sum(p.values()), **p}
+            return {cid: weights[cid] * evo for cid, evo in evos.items()}
 
+        last = self.num_cohorts - 1
+        coh0_evo = self._cohort_models[0].contra.state_dist_evo()
         midext_evo_coh = self.midext_evo_cohorts()
         evo = {0: coh0_evo * midext_evo_coh[:, 0].reshape(-1, 1)}
         for cid in self.mixed_cohorts:
@@ -922,7 +965,6 @@ class Midline(
         If ``central=True``, the result will be the state distribution of the central
         model's :py:meth:`.Bilateral.state_dist` method.
         """
-        # TODO: make sure everything works out for central!
         if central:
             return self.central.state_dist(t_stage, mode)
         ipsi_dist_evo = self._cohort_models[0].ipsi.state_dist_evo()
@@ -977,61 +1019,51 @@ class Midline(
             ],
         )
 
-    # TODO: have not touched this at all for the cohorts implementation,
-    # will need to see what we need to do about this!
     def patient_likelihoods(
         self,
-        t_stage: str = None,
+        t_stage: str | None = None,
         mode: Literal["HMM", "BN"] = "HMM",
-        ext_noext_arrays: bool = False,
+        per_cohort: bool = False,
     ) -> np.ndarray:
         """Compute the likelihood of each patient individually."""
         if mode != "HMM":
             raise NotImplementedError("Only HMM mode is supported as of now.")
-        ipsi_dist_evo = self.ext.ipsi.state_dist_evo()
-        contra_dist_evo = {}
-        contra_dist_evo["noext"], contra_dist_evo["ext"] = self.contra_state_dist_evo(
-            unmodified_midext_prob=ext_noext_arrays,
-        )
+        ipsi_dist_evo = self._cohort_models[0].ipsi.state_dist_evo()
+        contra_dist_evo = self.contra_state_dist_evo(conditional=per_cohort)
         t_stages = self.t_stages if t_stage is None else [t_stage]
-        patient_data = self.patient_data.loc[
-            self.patient_data[MAP_T_COL].isin(t_stages)
-        ]
-        patient_llhs = np.zeros((len(patient_data), 2))
+
+        patient_data = self.patient_data
+        llhs = np.zeros((len(patient_data), self.num_cohorts))
+        central_llhs = np.full(len(patient_data), np.nan)
+
+        t_col = patient_data[MAP_T_COL].to_numpy()
+
         for stage in t_stages:
-            t_idx = patient_data[MAP_T_COL] == stage
             diag_time_matrix = np.diag(self.get_distribution(stage).pmf)
-            # see the `Bilateral` model for why this is done in this way.
-            for case in ["ext", "noext"]:
-                loc = 0 if case == "ext" else 1
-                ext_idx = patient_data[MAP_EXT_COL] == (case == "ext")
-                joint_state_dist = (
-                    ipsi_dist_evo.T @ diag_time_matrix @ contra_dist_evo[case]
-                )
-                _model = getattr(self, case)
-                llhs = matrix.fast_trace(
-                    _model.ipsi.diagnosis_matrix(stage),
-                    joint_state_dist @ _model.contra.diagnosis_matrix(stage).T,
-                )
-                patient_llhs[t_idx & ext_idx, loc] = llhs
-                try:
-                    marg_patient_llhs = matrix.fast_trace(
-                        self.unknown.ipsi.diagnosis_matrix(stage),
-                        joint_state_dist
-                        @ self.unknown.contra.diagnosis_matrix(stage).T,
+            joint = {
+                cid: ipsi_dist_evo.T @ diag_time_matrix @ contra_dist_evo[cid]
+                for cid in self.cohorts
+            }
+            for name, (model, cids) in self._data_targets().items():
+                _, rows = self._loaded[name]
+                stage_rows = rows[t_col[rows] == stage]
+                for cid in cids:
+                    llhs[stage_rows, cid] = matrix.fast_trace(
+                        model.ipsi.diagnosis_matrix(stage),
+                        joint[cid] @ model.contra.diagnosis_matrix(stage).T,
                     )
-                    patient_llhs[t_idx & patient_data[MAP_EXT_COL].isna(), loc] = (
-                        marg_patient_llhs
-                    )
-                except AttributeError:
-                    # an AttributeError is raised both when the model has no `unknown`
-                    # attribute and when no data is loaded in the `unknown` model.
-                    pass
-        if (
-            not ext_noext_arrays
-        ):  # here we colapse the two columns into one likelihood per patient
-            patient_llhs = patient_llhs.sum(axis=1)
-        return patient_llhs
+            if self.use_central:
+                _, rows = self._loaded["central"]
+                stage_rows = rows[t_col[rows] == stage]
+                central_llhs[stage_rows] = self.central.patient_likelihoods(stage)
+
+        is_central = ~np.isnan(central_llhs)
+        if per_cohort:
+            llhs[is_central] = np.nan
+        else:
+            llhs = llhs.sum(axis=1)
+            llhs[is_central] = central_llhs[is_central]
+        return llhs[np.isin(t_col, t_stages)]
 
     def _hmm_likelihood(
         self,
@@ -1051,14 +1083,9 @@ class Midline(
                 cid: ipsi_dist_evo.T @ diag_time_matrix @ contra_dist_evo[cid]
                 for cid in self.cohorts
             }
-            targets = [(self._cohort_models[cid], joint[cid]) for cid in self.cohorts]
-            if self.marginalize_unknown:
-                targets.append((self.unknown, sum(joint.values())))
-                for midext, model in self._unknown_cohort.items():
-                    cids = self.ext_cohorts if midext else self.lateral_cohorts
-                    targets.append((model, sum(joint[cid] for cid in cids)))
+            for model, cids in self._data_targets().values():
+                state_dist = sum(joint[cid] for cid in cids)
 
-            for model, state_dist in targets:
                 patient_llhs = matrix.fast_trace(
                     model.ipsi.diagnosis_matrix(stage),
                     state_dist @ model.contra.diagnosis_matrix(stage).T,
@@ -1321,40 +1348,38 @@ class Midline(
         )
 
         if self.use_midext_evo:
-            midext_evo = self.midext_evo()
-            drawn_midexts = np.array(
-                [
-                    rng.choice(a=[False, True], p=midext_evo[t])
-                    for t in drawn_diag_times
-                ],
+            midext_evo = self.midext_evo_cohorts()
+            drawn_cohorts = np.array(
+                [rng.choice(a=self.cohorts, p=midext_evo[t]) for t in drawn_diag_times],
             )
         else:
-            drawn_midexts = rng.choice(
-                a=[False, True],
-                p=[1.0 - self.midext_prob, self.midext_prob],
+            p = self.midext_probs
+            drawn_cohorts = rng.choice(
+                a=self.cohorts,
+                p=[1.0 - sum(p.values()), *p.values()],
                 size=num,
             )
 
-        ipsi_evo = self.ext.ipsi.state_dist_evo()
+        ipsi_evo = self._cohort_models[0].ipsi.state_dist_evo()
         drawn_diags = np.empty(
-            shape=(num, self.ext.ipsi.obs_list.shape[1] * 2),
+            shape=(num, self._cohort_models[0].ipsi.obs_list.shape[1] * 2),
             dtype=bool,
         )
-        for case in ["ext", "noext"]:
-            case_model = getattr(self, case)
+        for cid in self.cohorts:
+            cid_model = self._cohort_models[cid]
             drawn_ipsi_diags = utils.draw_diagnosis(
-                diagnosis_times=drawn_diag_times[drawn_midexts == (case == "ext")],
+                diagnosis_times=drawn_diag_times[drawn_cohorts == cid],
                 state_evolution=ipsi_evo,
-                observation_matrix=case_model.ipsi.observation_matrix(),
-                possible_diagnosis=case_model.ipsi.obs_list,
+                observation_matrix=cid_model.ipsi.observation_matrix(),
+                possible_diagnosis=cid_model.ipsi.obs_list,
                 rng=rng,
                 seed=seed,
             )
             drawn_contra_diags = utils.draw_diagnosis(
-                diagnosis_times=drawn_diag_times[drawn_midexts == (case == "ext")],
-                state_evolution=case_model.contra.state_dist_evo(),
-                observation_matrix=case_model.contra.observation_matrix(),
-                possible_diagnosis=case_model.contra.obs_list,
+                diagnosis_times=drawn_diag_times[drawn_cohorts == cid],
+                state_evolution=cid_model.contra.state_dist_evo(),
+                observation_matrix=cid_model.contra.observation_matrix(),
+                possible_diagnosis=cid_model.contra.obs_list,
                 rng=rng,
                 seed=seed,
             )
@@ -1362,13 +1387,13 @@ class Midline(
                 [drawn_ipsi_diags, drawn_contra_diags],
                 axis=1,
             )
-            drawn_diags[drawn_midexts == (case == "ext")] = drawn_case_diags
+            drawn_diags[drawn_cohorts == cid] = drawn_case_diags
 
         # construct MultiIndex with "ipsi" and "contra" at top level to allow
         # concatenation of the two separate drawn diagnosis
         sides = ["ipsi", "contra"]
         modality_names = list(self.get_all_modalities().keys())
-        lnl_names = list(self.ext.ipsi.graph.lnls.keys())
+        lnl_names = list(self._cohort_models[0].ipsi.graph.lnls.keys())
         multi_cols = pd.MultiIndex.from_product([sides, modality_names, lnl_names])
 
         # reorder the column levels and thus also the individual columns to match the
@@ -1377,7 +1402,8 @@ class Midline(
         dataset = dataset.reorder_levels(order=[1, 0, 2], axis="columns")
         dataset = dataset.sort_index(axis="columns", level=0)
         dataset["tumor", "core", "t_stage"] = drawn_t_stages
-        dataset["tumor", "core", "extension"] = drawn_midexts
+        dataset["tumor", "core", "extension"] = np.isin(drawn_cohorts, self.ext_cohorts)
+        dataset[COHORT_COL] = drawn_cohorts
         dataset["patient", "core", "diagnosis_time"] = drawn_diag_times
 
         return dataset
