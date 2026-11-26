@@ -79,7 +79,9 @@ class Midline(
 
     Model a bilateral lymphatic system where an additional risk factor can
     be provided in the data: Whether or not the primary tumor extended over the
-    mid-sagittal line, or is located on the mid-sagittal line.
+    mid-sagittal line, or is located on the mid-sagittal line. Additionally, also
+    how far the tumor is located from or how far it extends across the midline
+    can be considered as a risk factor.
 
     It is reasonable to assume (and supported by data) that an extension of the primary
     tumor significantly increases the risk for metastatic spread to the contralateral
@@ -96,6 +98,17 @@ class Midline(
     to the contralateral side for patients with midline extension, and
     :math:`b_c^{\not\in}` for patients without. :math:`\alpha` is the linear
     mixing parameter.
+
+    Further, the more the tumor extends over the midline the higher the probability of
+    spread to the contralateral side is expected to be. This model also enables
+    incorporating extension distance in the form of distance cohorts. Each cohort
+    (except for the reference cohort 0) then receives its own mixing parameter
+    :math:`\alpha` and with that also its individual contralateral spread parameters:
+
+    .. math::
+        b_c^{j} = \alpha_j \cdot b_i + (1 - \alpha_j) \cdot b_c^{0},
+        \quad j = 1, \dots, N - 1
+
     """
 
     def __init__(
@@ -115,15 +128,18 @@ class Midline(
 
         The class is constructed in a similar fashion to the :py:class:`~.Bilateral`:
         That class contains one :py:class:`~.Unilateral` for each side of the neck,
-        while this class will contain several instances of :py:class:`~.Bilateral`,
-        one for the ipsilateral side and two to three for the the contralateral side
-        covering the cases a) no midline extension, b) midline extension, and c)
-        central tumor location.
+        while this class contains several instances of :py:class:`~.Bilateral`:
+        one per cohort (by default two: no midline extension and midline
+        extension), and possibly one for central tumors and one or more for
+        patients with unknown extension or cohort.
 
         Added keyword arguments in this constructor are ``use_mixing``, which controls
         whether to use the above described mixture of spread parameters from tumor to
         the LNLs. And ``use_central``, which controls whether to use a third
         :py:class:`~.Bilateral` model for the case of a central tumor location.
+
+        The parameter ``cohorts`` allows to pass the distance cohorts.
+        TODO: need to add a more detailed description after adjusting types.
 
         The parameter ``use_midext_evo`` decides whether the tumor's midline extensions
         should be considered a random variable, in which case it is evolved like the
@@ -141,11 +157,14 @@ class Midline(
 
         .. seealso::
 
-            :py:class:`Bilateral`: Two to four of these are held as attributes by this
+            :py:class:`Bilateral`: Several of these are held as attributes by this
             class. One for the case of a mid-sagittal extension of the primary
             tumor, one for the case of no such extension, (possibly) one for the case of
             a central/symmetric tumor, and (possibly) one for the case of unknown
-            midline extension status.
+            midline extension status. When using the cohorts functionality, there will
+            be one instance per distance cohort and possibly two for the case of unknown
+            cohort assignment but known extension status (one extended, one
+            lateralised).
         """
         is_symmetric = dict(is_symmetric or {})
         is_symmetric.setdefault("tumor_spread", False)
@@ -168,7 +187,7 @@ class Midline(
             )
 
         # Initialize unified cohort model storage
-        self._cohort_midext = parse_cohorts(cohorts)
+        self._cohort_midext = parse_cohorts(cohorts)  # list of extension status
         self._cohort_models = [
             models.Bilateral(
                 graph_dict=graph_dict,
@@ -283,7 +302,7 @@ class Midline(
 
     @property
     def midext_prob(self) -> float:
-        """Return the probability of midline extension (for one extended cohort)."""
+        """Return the probability of midline extension (for one mixed cohort)."""
         if self.num_cohorts != 2:
             raise AttributeError(
                 "`midext_prob` is ambiguous with more than two cohorts; "
@@ -293,7 +312,7 @@ class Midline(
 
     @midext_prob.setter
     def midext_prob(self, value: float) -> None:
-        """Set the probability of midline extension (only for one extended cohort)."""
+        """Set the probability of midline extension (only for one mixed cohort)."""
         if self.num_cohorts != 2:
             raise AttributeError(
                 "`midext_prob` is ambiguous with more than two cohorts; "
@@ -329,8 +348,11 @@ class Midline(
 
     @midext_probs.setter
     def midext_probs(self, value: float | Mapping[int, float]) -> None:
-        """Set the probability of midline extension.
+        """Set the probability of midline extension or cohort membership.
 
+        Without midline evolution this denotes the probability of belonging to each
+        cohort. With midline evolution, this denotes the probability of the tumor
+        growing from one cohort to the next one within a timestep.
         A single number sets all cohorts to that value. A mapping only updates the given
         cohorts and keeps the others, so individual values can be set.
         """
@@ -344,7 +366,7 @@ class Midline(
 
     @property
     def mixing_param(self) -> float | None:
-        """Return the mixing parameter (only for one extended cohort)."""
+        """Return the mixing parameter (only for one mixed cohort)."""
         if not self.use_mixing:
             return None
         if self.num_cohorts != 2:
@@ -356,7 +378,7 @@ class Midline(
 
     @mixing_param.setter
     def mixing_param(self, value: float) -> None:
-        """Set the mixing parameter (only for one extended cohort)."""
+        """Set the mixing parameter (only for one mixed cohort)."""
         if self.num_cohorts != 2:
             raise AttributeError(
                 "`mixing_param` is ambiguous with more than two cohorts, "
@@ -414,7 +436,12 @@ class Midline(
 
     @property
     def marginalize_unknown(self) -> bool:
-        """Return whether the model marginalizes over unknown midline extension."""
+        """Return whether the model marginalizes over unknown midline extension.
+
+        If cohort functionality is used, it will also marginalise over unknown
+        cohort status. Patients whose extension status is known but whose cohort is
+        not are marginalised over the cohorts with that extension status.
+        """
         return hasattr(self, "_unknown")
 
     @property
@@ -466,6 +493,11 @@ class Midline(
         return f"cohort{cid}"
 
     def _data_targets(self) -> dict[str, tuple[models.Bilateral, list[int]]]:
+        """Return the child models that receive patient data.
+
+        A dict with a label for each child model, the model itself and the
+        corresponding cohorts is returned.
+        """
         targets = {
             f"cohort{cid}": (m, [cid]) for cid, m in enumerate(self._cohort_models)
         }
@@ -479,7 +511,10 @@ class Midline(
 
     @property
     def patient_data(self) -> pd.DataFrame:
-        """Dataset with an additional column denoting corresponding models."""
+        """Dataset with an additional column denoting corresponding models.
+
+        The index is the row position in the loaded data.
+        """
         if not self._loaded:
             raise AttributeError("No patient data loaded yet.")
         frames = []
@@ -499,8 +534,9 @@ class Midline(
 
         If the model uses the mixing parameter, the returned params will contain the
         ipsilateral spread from tumor to LNLs, the contralateral ones for the case of
-        no midline extension, and the mixing parameter. Otherwise, it will contain the
-        contralateral params for the cases of present and absent midline extension.
+        no midline extension (or the reference cohort 0), and the mixing parameters.
+        Otherwise, it will contain the contralateral params for the cases of present
+        and absent midline extension (or the various distance cohorts).
         """
         params = {}
         params["ipsi"] = self._cohort_models[0].ipsi.get_tumor_spread_params(
@@ -597,7 +633,8 @@ class Midline(
         Includes the spread parameters from the call to :py:meth:`get_spread_params`
         and the distribution parameters from the call to
         :py:meth:`~.diagnosis_times.Composite.get_distribution_params`. It also appends
-        the probability of midline extension to the end of the returned params.
+        the probability of midline extension / cohort membership to the end of the
+        returned params.
         """
         params = {}
         params.update(self.get_spread_params(as_flat=as_flat))
@@ -816,7 +853,7 @@ class Midline(
             if invalid.any():
                 raise ValueError(
                     f"Column {COHORT_COL} must contain one "
-                    f"of {list(self.cohorts)} of Nan.",
+                    f"of {list(self.cohorts)} or NaN.",
                 )
             cohort = given.astype(float)
 
@@ -841,7 +878,7 @@ class Midline(
         elif self.num_cohorts > 2 and COHORT_COL not in patient_data.columns:
             raise ValueError(
                 f"With more than two cohorts, `cohort_bins` or column {COHORT_COL} "
-                "are required.",
+                "is required.",
             )
 
         route = pd.Series("unknown", index=patient_data.index)  # extension unknown
@@ -870,7 +907,31 @@ class Midline(
         mapping: callable = utils.early_late_mapping,
         cohort_bins: Sequence[float] | None = None,
     ) -> None:
-        """Load patient data into the model."""
+        """Load patient data into the model.
+
+        Each patient is assigned to exactly one child model, using the first rule
+        that applies:
+
+        1. Central tumor (``("tumor", "core", "central")`` is ``True``) and
+           :py:attr:`.use_central` is set: the :py:attr:`.central` model.
+        2. Cohort given in ``("tumor", "algo", "cohort")``: that cohort's model.
+        3. ``cohort_bins`` given and the distance in
+           ``("tumor", "algo", "extension_dist")`` reported: the cohort of the bin
+           it falls into. ``cohort_bins`` are the bin edges, one more than there
+           are cohorts. The lowest edge is included.
+        4. Only the extension status (``("tumor", "core", "extension")``) known:
+           the cohort with that status if there is only one, otherwise an
+           unknown-cohort model that marginalizes over the cohorts with that status.
+        5. Nothing known: the :py:attr:`.unknown` model, which marginalizes over all
+           cohorts.
+
+        Unknown-cohort and unknown patients are only kept if
+        :py:attr:`.marginalize_unknown` is ``True``. Otherwise they are discarded with
+        a warning. The columns are not checked for consistency with each other.
+
+        The split data is sent to the :py:meth:`.Bilateral.load_patient_data` method of
+        the respective models.
+        """
         route = self._route_patients(patient_data, cohort_bins)
 
         data_models = {name: model for name, (model, _) in self._data_targets().items()}
@@ -894,7 +955,11 @@ class Midline(
         return np.stack([noext, 1.0 - noext], axis=1)
 
     def midext_evo_cohorts(self) -> np.ndarray:
-        """Evolve only the state of the cohorts."""
+        """Evolve only the state of the cohorts.
+
+        Returns an array of dimensions (max_time + 1, num_cohorts) denoting the
+        probability for being in cohort c at time t.
+        """
         if not self.use_midext_evo:
             raise ValueError(
                 "Cohort evolution is only defined with `use_midext_evo=True`.",
@@ -917,7 +982,22 @@ class Midline(
         self,
         conditional: bool = False,
     ) -> dict[int, np.ndarray]:
-        """Evolve contra side as mixture of with & without midline extension."""
+        """Evolve the contralateral state distribution for each cohort.
+
+        Returns a dict mapping each cohort id to an array of shape
+        ``(max_time + 1, num_states)``. By default, the value at ``[t, i]`` is the
+        joint probability of the contralateral side being in state ``i`` at time
+        ``t`` **AND** the tumor belonging to that cohort at time ``t``.
+
+        Without midline extension evolution, this is the cohort's own evolution
+        weighted by its cohort probability. With evolution, a tumor in cohort ``c``
+        at time ``t`` has passed through the cohorts ``0, ..., c - 1`` before, so
+        the evolution is computed recursively from the previous cohort.
+
+        If ``conditional=True``, return P(state | cohort) instead, i.e. the
+        unweighted evolution of each cohort. This is only defined without midline
+        extension evolution.
+        """
         if conditional and self.use_midext_evo:
             raise NotImplementedError(
                 "Unweighted (per-cohort) contra evolution is only defined "
@@ -956,11 +1036,11 @@ class Midline(
         mode: Literal["HMM", "BN"] = "HMM",
         central: bool = False,
     ) -> np.ndarray:
-        """Compute the joint over ipsi- & contralateral hidden states and midline ext.
+        """Compute the joint over ipsi- & contralateral hidden states and ext / cohorts.
 
-        If ``central=False``, the result has shape (2, num_states, num_states), where
-        the first axis is for the midline extension status, the second for the
-        ipsilateral state, and the third for the contralateral state.
+        If ``central=False``, the result has shape (num_cohorts, num_states, num_states)
+        where the first axis is the cohort (by default 0 = no extension, 1 = extension),
+        the second for the ipsilateral state, and the third for the contralateral state.
 
         If ``central=True``, the result will be the state distribution of the central
         model's :py:meth:`.Bilateral.state_dist` method.
@@ -1025,7 +1105,16 @@ class Midline(
         mode: Literal["HMM", "BN"] = "HMM",
         per_cohort: bool = False,
     ) -> np.ndarray:
-        """Compute the likelihood of each patient individually."""
+        """Compute the likelihood of each patient individually.
+
+        It will return an array with the likelihood of each patient. If the option
+        ``per_cohort`` is set to ``True``, the likelihood of the patient's diagnosis
+        within each cohort is returned, conditioned on being assigned to that cohort.
+        This is only defined without midline extension evolution, i.e. if
+        ``use_midext_evo`` is ``False``.
+
+        Only patients of the given T-stage (argument ``t_stage``) are returned.
+        """
         if mode != "HMM":
             raise NotImplementedError("Only HMM mode is supported as of now.")
         ipsi_dist_evo = self._cohort_models[0].ipsi.state_dist_evo()
@@ -1178,8 +1267,12 @@ class Midline(
         Using either the ``given_params`` or the ``given_state_dist`` argument, this
         method computes the posterior state distribution of the model for the
         ``given_diagnosis``, a specific ``t_stage``, whether the tumor extends over the
-        mid-sagittal line (``midext``), and whether it is central (``central``, only
-        used if :py:attr:`use_central` is ``True``).
+        mid-sagittal line (``midext``) or belongs to a distance cohort (``cohort``),
+        and whether it is central (``central``, only used if :py:attr:`use_central`
+        is ``True``).
+
+        If both ``midext`` and ``cohort`` are given, they must be consistent.
+        If only ``midext`` is given, we sum over the matching cohorts.
 
         .. seealso::
 
@@ -1236,6 +1329,9 @@ class Midline(
         The arguments ``t_stage``, ``mode``, and ``central`` are only used if
         ``given_state_dist`` is ``None``. In this case they are passed to the
         :py:meth:`.state_dist` method.
+
+        The argument ``cohort`` allows selection of a specific cohort, while the
+        argument ``midext`` will marginalize over lateralised or extended cohorts.
         """
         if involvement is None:
             involvement = {}
@@ -1276,8 +1372,8 @@ class Midline(
 
         In addition to the arguments of the :py:meth:`.Bilateral.risk` method, this
         also allows specifying if the patient's tumor extended over the mid-sagittal
-        line (``midext=True``) or if it was even located right on that line
-        (``central=True``).
+        line (``midext=True``) or if it belonged to a specific cohort (``cohort``)
+        or if it was even located right on that line (``central=True``).
 
         For logical reasons, ``midext=False`` makes no sense if ``central=True`` and
         is thus ignored.
@@ -1289,11 +1385,12 @@ class Midline(
             argument. Here, this ``given_state_dist`` may be a 2D array, in which case
             it is assumed you know how it was computed and the arguments ``t_stage``,
             ``midext``, ``central``, and ``mode`` are ignored. If it is 3D, it should
-            have the shape ``(2, num_states, num_states)`` and be the output of the
-            :py:meth:`.Midline.state_dist` method. In this case, the ``midext``
-            argument is *not* ignored: It may be used to select the correct state
-            distribution (when ``True`` or ``False``), or marginalize over the midline
-            extension status (when ``midext=None``).
+            have the shape ``(num_cohorts, num_states, num_states)`` and be the output
+            of the :py:meth:`.Midline.state_dist` method. In this case, the ``midext``
+            or ``cohort`` arguments are *not* ignored: ``cohort`` may be used
+            to select the correct state distribution and ``midext`` sums over the
+            cohorts of that status (when ``True`` or ``False``), or marginalizes over
+            the midline extension status (when ``midext=None``).
         """
         posterior_state_dist = self.posterior_state_dist(
             given_params=given_params,
