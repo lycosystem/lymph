@@ -1112,7 +1112,7 @@ class Midline(
         ``per_cohort`` is set to ``True``, the likelihood of the patient's diagnosis
         within each cohort is returned, conditioned on being assigned to that cohort.
         This is only defined without midline extension evolution, i.e. if
-        ``use_midext_evo`` is ``False``.
+        ``use_midext_evo`` is ``False``. Central patients then get NaN in every column.
 
         Only patients of the given T-stage (argument ``t_stage``) are returned.
         """
@@ -1411,7 +1411,6 @@ class Midline(
             cohort=cohort,
         )
 
-    # not checked so far for the cohorts implementation!
     def draw_patients(
         self,
         num: int,
