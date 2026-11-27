@@ -222,15 +222,20 @@ DiagnosisType = dict[str, PatternType]
 ... }
 """
 
-CohortsType = dict[int, bool]
-"""Mapping of cohort id to whether it represents an extension cohort.
+CohortsType = Mapping[int, bool] | Sequence[bool]
+"""Midline extension status of each cohort.
 
-Keys are cohort identifiers (integers) and values are ``True`` if the cohort
-represents patients with midline extension and ``False`` otherwise. This can be
-passed to the :py:meth:`~lymph.models.midline.Midline` constructor when using
-cohorts to explicitly communicate which cohorts correspond to midline extension.
+Either a sequence of bools, where the position is the cohort id, or a mapping of
+cohort id to bool. ``True`` means the cohort represents patients with midline
+extension, ``False`` lateralised patients. Cohort ids must be ``0, ..., N-1``
+without gaps, ordered from most lateralised to most extended: cohort 0 is the
+lateralised reference, and all lateralised cohorts come before the extended ones.
 
-Example: ``{0: False, 1: True, 2: True}`` where ``0`` is the no-extension cohort.
+This can be passed to the :py:class:`~lymph.models.midline.Midline` constructor.
+
+Example: ``(False, True, True)`` or ``{0: False, 1: True, 2: True}``, i.e. one
+lateralised and two extended cohorts. The default ``(False, True)`` corresponds
+to the classic no-extension / extension model.
 """
 
 

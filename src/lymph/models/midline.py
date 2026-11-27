@@ -29,7 +29,7 @@ COHORT_COL = ("tumor", "algo", "cohort")
 
 
 def parse_cohorts(
-    cohorts: Mapping[int, bool] | Sequence[bool] | None,
+    cohorts: types.CohortsType | None,
 ) -> tuple[bool, ...]:
     """Turn the ``cohorts`` argument into a tuple of midline extension statuses.
 
@@ -138,8 +138,9 @@ class Midline(
         the LNLs. And ``use_central``, which controls whether to use a third
         :py:class:`~.Bilateral` model for the case of a central tumor location.
 
-        The parameter ``cohorts`` allows to pass the distance cohorts.
-        TODO: need to add a more detailed description after adjusting types.
+        The parameter ``cohorts`` defines the midline extension status of each cohort,
+        see :py:data:`~lymph.types.CohortsType`. By default there are two cohorts:
+        one without and one with midline extension.
 
         The parameter ``use_midext_evo`` decides whether the tumor's midline extensions
         should be considered a random variable, in which case it is evolved like the
